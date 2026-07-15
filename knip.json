@@ -1,0 +1,15 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "scripts/**/*.ts",
+    "src/instrumentation.ts"
+  ],
+  "project": ["src/**/*.{ts,tsx}", "scripts/**/*.ts"],
+  "ignoreBinaries": ["docker"],
+  "ignoreDependencies": [
+    "tsx",
+    "shadcn",
+    "tailwindcss",
+    "tw-animate-css"
+  ]
+}

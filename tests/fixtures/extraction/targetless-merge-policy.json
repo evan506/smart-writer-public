@@ -1,0 +1,33 @@
+{
+  "description": "Alias refs without a concrete target are rejected before MERGE suggestions are built.",
+  "entities": [
+    {
+      "name": "붉은 가면",
+      "type": "CHARACTER",
+      "sub_type": "alias_ref",
+      "confidence": 0.76,
+      "context_snippet": "사람들은 그를 붉은 가면이라 불렀지만 누구인지는 말하지 않았다."
+    },
+    {
+      "name": "서윤",
+      "type": "CHARACTER",
+      "sub_type": "alias_ref",
+      "alias_of": "서윤 아벨",
+      "confidence": 0.78,
+      "context_snippet": "서윤 아벨은 오늘부터 서윤이라고 불러 달라고 말했다."
+    },
+    {
+      "name": "서윤 아벨",
+      "type": "CHARACTER",
+      "confidence": 0.86,
+      "context_snippet": "서윤 아벨은 오래된 성문을 열었다."
+    }
+  ],
+  "expectedKept": [
+    "서윤",
+    "서윤 아벨"
+  ],
+  "expectedDropped": [
+    "붉은 가면"
+  ]
+}

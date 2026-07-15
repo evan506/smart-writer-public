@@ -1,0 +1,60 @@
+{
+  "description": "Species-like character candidates become concepts in generic/plural contexts, but remain characters when the context identifies an individual.",
+  "entities": [
+    {
+      "name": "늑대 수인",
+      "type": "CHARACTER",
+      "confidence": 0.88,
+      "context_snippet": "늑대 수인들은 북방 부족의 오래된 혈통을 지켰다."
+    },
+    {
+      "name": "여우 수인",
+      "type": "CHARACTER",
+      "confidence": 0.83,
+      "context_snippet": "여우 수인은 고개를 들고 자기소개를 했다."
+    },
+    {
+      "name": "하피",
+      "type": "CHARACTER",
+      "confidence": 0.81,
+      "context_snippet": "하피 종족은 바람 절벽의 문화를 노래로 남겼다."
+    },
+    {
+      "name": "상처를 치료하는 하피",
+      "type": "CHARACTER",
+      "confidence": 0.79,
+      "context_snippet": "상처를 치료하는 하피는 리엔의 팔에 약초를 감았다."
+    },
+    {
+      "name": "완성된 노예들",
+      "type": "CHARACTER",
+      "confidence": 0.76,
+      "context_snippet": "완성된 노예들은 같은 표식을 지닌 집단이었다."
+    }
+  ],
+  "expectedTypes": [
+    {
+      "name": "늑대 수인",
+      "type": "CONCEPT",
+      "sub_type": "species"
+    },
+    {
+      "name": "여우 수인",
+      "type": "CHARACTER"
+    },
+    {
+      "name": "하피",
+      "type": "CONCEPT",
+      "sub_type": "species"
+    },
+    {
+      "name": "상처를 치료하는 하피",
+      "type": "CHARACTER"
+    },
+    {
+      "name": "완성된 노예들",
+      "type": "CONCEPT",
+      "sub_type": "role"
+    }
+  ]
+}

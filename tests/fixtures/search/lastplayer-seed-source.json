@@ -1,0 +1,103 @@
+{
+  "source": "tests/fixtures/search",
+  "title": "마지막 플레이어",
+  "genre": "fantasy",
+  "chapters": [
+    {
+      "chapterNum": 1,
+      "title": "마지막 플레이어 1화",
+      "content": "아자르 스튜디오가 만든 게임에서 플레이어는 제국의 개척자 대신 원주민 편에 서서 싸운다. 주인공은 제국 모함의 수용소에서 포로들을 구출하고, 믿음직한 동료와 함께 제국의 정예 병사와 추적자들을 상대한다."
+    },
+    {
+      "chapterNum": 2,
+      "title": "마지막 플레이어 2화",
+      "content": "수인들은 오랫동안 제국의 노예제도를 겪었기 때문에 납치와 감금이라는 말에 민감하다. 고양이 수인과 늑대 수인은 숲에서 깨어난 주인공이 제국에게 붙잡혔던 사람인지 확인하려 한다."
+    },
+    {
+      "chapterNum": 3,
+      "title": "마지막 플레이어 3화",
+      "content": "어두운 숲에서 고양이 수인과 늑대 수인은 주인공을 안내한다. 괴수 무리가 습격하자 주인공은 맨손으로 괴수를 쓰러뜨리고, 예전에 익힌 몸놀림과 감각을 떠올리며 자신의 전투력을 확인한다."
+    }
+  ],
+  "entities": [
+    {
+      "name": "주인공",
+      "type": "CHARACTER",
+      "sub_type": "player",
+      "summary": "제국 편이 아닌 원주민과 수인 편에 서서 싸운 베테랑 플레이어",
+      "aliases": ["강철주먹 카일", "카일"],
+      "confidence": 0.8,
+      "status": "auto_confirmed",
+      "first_chapter": 1
+    },
+    {
+      "name": "제국",
+      "type": "ORGANIZATION",
+      "sub_type": null,
+      "summary": "원주민을 노예로 만들고 행성을 침략하는 외계 문명 세력",
+      "aliases": ["제국놈들"],
+      "confidence": 0.9,
+      "status": "auto_confirmed",
+      "first_chapter": 1
+    },
+    {
+      "name": "수인",
+      "type": "CONCEPT",
+      "sub_type": "species",
+      "summary": "제국의 노예제도에 상처를 입었고 납치와 노예 범죄에 민감한 종족",
+      "aliases": ["고양이 수인", "늑대 수인"],
+      "confidence": 0.8,
+      "status": "auto_confirmed",
+      "first_chapter": 2
+    },
+    {
+      "name": "괴수",
+      "type": "CONCEPT",
+      "sub_type": "monster",
+      "summary": "어두운 숲에서 무리 지어 나타나 수인과 주인공을 위협하는 몬스터",
+      "aliases": ["몬스터"],
+      "confidence": 0.8,
+      "status": "auto_confirmed",
+      "first_chapter": 3
+    },
+    {
+      "name": "아자르 스튜디오",
+      "type": "ORGANIZATION",
+      "sub_type": "studio",
+      "summary": "제국 개척자와 원주민 억류 설정의 게임을 만든 신흥 게임 제작사",
+      "aliases": [],
+      "confidence": 0.7,
+      "status": "suggestion",
+      "first_chapter": 1
+    }
+  ],
+  "relations": [
+    {
+      "from": "주인공",
+      "to": "제국",
+      "type": "ENEMY",
+      "direction": "BI",
+      "weight": 0.9,
+      "context_snippet": "나는 그때 원주민 편에 서서 싸웠다.",
+      "chapter": 1
+    },
+    {
+      "from": "주인공",
+      "to": "수인",
+      "type": "PROTECTS",
+      "direction": "UNI",
+      "weight": 0.7,
+      "context_snippet": "믿음직한 동료와 함께 버티고 있다.",
+      "chapter": 1
+    },
+    {
+      "from": "괴수",
+      "to": "수인",
+      "type": "ENEMY",
+      "direction": "BI",
+      "weight": 0.8,
+      "context_snippet": "괴수 무리를 상대할 때는 허점이 생길 수밖에 없으니까.",
+      "chapter": 3
+    }
+  ]
+}

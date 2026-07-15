@@ -1,0 +1,74 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+/playwright-report
+/test-results
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# e2e test screenshots
+e2e-test-*.png
+
+*.png
+
+.playwright-mcp
+supabase/.temp/
+
+.mcp.json
+.codex/
+claude.md
+.agents
+.claude
+.kiro
+.windsurf
+
+references
+
+# Extraction eval harness reports + mined golden sets (may embed manuscript text)
+eval-reports
+
+# --- public snapshot guards (added by export-public-snapshot.sh) ---
+docs/
+.mey/
+AGENTS.md
+CLAUDE.md
+TODO.md
+TEMPLATE.md
+skills-lock.json
+manifest.json

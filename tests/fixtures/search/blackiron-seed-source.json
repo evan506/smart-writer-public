@@ -1,0 +1,103 @@
+{
+  "source": "tests/fixtures/search",
+  "title": "흑철기사단 연대기",
+  "genre": "fantasy",
+  "chapters": [
+    {
+      "chapterNum": 1,
+      "title": "흑철기사단 연대기 1화",
+      "content": "엘프 왕성에서 리엔 하르트는 변경 수비대장으로 발령을 받는다. 리엔은 흑철 성채에 도착해 서투른 신참 시녀 미라를 만나고, 마족과 맞서야 하는 변경의 현실을 마주한다."
+    },
+    {
+      "chapterNum": 4,
+      "title": "흑철기사단 연대기 4화",
+      "content": "리엔 하르트는 성채의 병사들을 이끌고 마족의 위협에 맞선다. 그는 미라에게 자신이 없는 동안 성채를 부탁하고, 미라는 리엔을 돕는 시녀로 남는다."
+    },
+    {
+      "chapterNum": 7,
+      "title": "흑철기사단 연대기 7화",
+      "content": "엘프와 오크, 마족 사이의 적대 관계가 드러난다. 하이엘프와 엘프의 관계, 그리고 오크와 마족의 대립이 변경의 긴장을 만든다."
+    }
+  ],
+  "entities": [
+    {
+      "name": "리엔 하르트",
+      "type": "CHARACTER",
+      "sub_type": "named",
+      "summary": "하이엘프 혈통의 젊은 기사로, 왕성 근무에서 변경 수비대장으로 발령된 주인공",
+      "aliases": ["리엔"],
+      "confidence": 0.9,
+      "status": "auto_confirmed",
+      "first_chapter": 1
+    },
+    {
+      "name": "하이엘프",
+      "type": "CONCEPT",
+      "sub_type": "species",
+      "summary": "엘프 중에서도 특별한 지위를 가진 하위 종족",
+      "aliases": ["엘프"],
+      "confidence": 0.8,
+      "status": "auto_confirmed",
+      "first_chapter": 1
+    },
+    {
+      "name": "오크",
+      "type": "CONCEPT",
+      "sub_type": "species",
+      "summary": "엘프 왕국에 존재하는 또 다른 종족",
+      "aliases": [],
+      "confidence": 0.9,
+      "status": "auto_confirmed",
+      "first_chapter": 1
+    },
+    {
+      "name": "미라",
+      "type": "CHARACTER",
+      "sub_type": "named",
+      "summary": "리엔을 보좌하는 서투른 신참 시녀",
+      "aliases": [],
+      "confidence": 0.7,
+      "status": "suggestion",
+      "first_chapter": 1
+    },
+    {
+      "name": "흑철 성채",
+      "type": "PLACE",
+      "sub_type": null,
+      "summary": "리엔이 부임한 변경 지대의 요새",
+      "aliases": [],
+      "confidence": 0.8,
+      "status": "auto_confirmed",
+      "first_chapter": 1
+    }
+  ],
+  "relations": [
+    {
+      "from": "리엔 하르트",
+      "to": "엘프",
+      "type": "SPECIES_OF",
+      "direction": "UNI",
+      "weight": 0.9,
+      "context_snippet": "그곳에서도 하이엘프의 긍지를 잊지 않도록 하라",
+      "chapter": 1
+    },
+    {
+      "from": "미라",
+      "to": "리엔",
+      "type": "SERVES",
+      "direction": "UNI",
+      "weight": 0.7,
+      "context_snippet": "내가 없는 동안 성채를 잘 부탁한다.",
+      "chapter": 4
+    },
+    {
+      "from": "엘프",
+      "to": "오크",
+      "type": "ENEMY",
+      "direction": "BI",
+      "weight": 0.9,
+      "context_snippet": "오크 놈들이라니... 성주는 그런 걸 신경 쓸 위인이 아니야.",
+      "chapter": 7
+    }
+  ]
+}

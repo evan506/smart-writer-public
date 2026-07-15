@@ -1,0 +1,38 @@
+{
+  "description": "Character-character co-occurrence requires explicit durable relation evidence, while non-character pairs can use proximity evidence.",
+  "text": "하린과 세린은 같은 골목에 있었다. 빗소리만 길게 이어졌고 두 사람은 아무 말 없이 각자의 길을 바라보았다. 시장의 등불은 하나씩 꺼졌고 종소리는 오래된 지붕 위로 흩어졌다. 하린과 리오는 함께 마족에게 맞서 싸웠다. 하린은 검은 탑에서 오래된 문장을 발견했다.",
+  "entities": [
+    {
+      "name": "하린",
+      "type": "CHARACTER"
+    },
+    {
+      "name": "세린",
+      "type": "CHARACTER"
+    },
+    {
+      "name": "리오",
+      "type": "CHARACTER"
+    },
+    {
+      "name": "검은 탑",
+      "type": "PLACE"
+    }
+  ],
+  "expectedPairs": [
+    [
+      "하린",
+      "리오"
+    ],
+    [
+      "하린",
+      "검은 탑"
+    ]
+  ],
+  "rejectedPairs": [
+    [
+      "하린",
+      "세린"
+    ]
+  ]
+}

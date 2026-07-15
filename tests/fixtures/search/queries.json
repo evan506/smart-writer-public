@@ -1,0 +1,111 @@
+{
+  "description": "LLM-free Search/RAG query routing fixtures. These lock the intended mode classification before database-backed top-k evaluation fixtures are added.",
+  "cases": [
+    {
+      "id": "short-entity-name",
+      "query": "리엔",
+      "expectedMode": "bm25",
+      "expectedModes": ["bm25"],
+      "expectedReasonIncludes": "짧은 고유명사",
+      "notes": "Short entity names should prefer exact lexical matching."
+    },
+    {
+      "id": "quoted-canon-term",
+      "query": "\"검은 서고\"",
+      "expectedMode": "bm25",
+      "expectedModes": ["bm25"],
+      "expectedReasonIncludes": "짧은 고유명사",
+      "notes": "Quoted canon terms should be treated as precise lookup queries."
+    },
+    {
+      "id": "relationship-question",
+      "query": "리엔과 카이의 관계를 보여줘",
+      "expectedMode": "graph",
+      "expectedModes": ["graph", "bm25"],
+      "expectedReasonIncludes": "관계/구조",
+      "notes": "Relationship wording should search graph first, then lexical fallbacks."
+    },
+    {
+      "id": "scene-tone-question",
+      "query": "검은 서고와 비슷한 분위기 장면",
+      "expectedMode": "vector",
+      "expectedModes": ["vector", "bm25"],
+      "expectedReasonIncludes": "의미/장면",
+      "notes": "Scene, tone, and similarity wording should prefer semantic retrieval."
+    },
+    {
+      "id": "hybrid-relationship-scene",
+      "query": "리엔과 카이의 관계가 드러나는 장면",
+      "expectedMode": "hybrid",
+      "expectedModes": ["graph", "vector", "bm25"],
+      "expectedReasonIncludes": "그래프",
+      "notes": "Relationship plus scene wording should combine graph, vector, and BM25."
+    },
+    {
+      "id": "long-natural-language-default",
+      "query": "왕궁 지하에서 오래된 지도 조각을 발견한 대목",
+      "expectedMode": "vector",
+      "expectedModes": ["vector", "bm25"],
+      "expectedReasonIncludes": "기본 벡터 검색",
+      "notes": "Long descriptive queries without explicit graph keywords default to vector search."
+    }
+  ],
+  "topKEvaluation": {
+    "acceptableTopK": 8,
+    "cases": [
+      {
+        "id": "entity-hit-top-3",
+        "query": "리엔",
+        "expectedEntityIds": ["entity-rien"],
+        "expectedChapterIds": [],
+        "requiredSources": ["bm25"],
+        "results": [
+          {
+            "id": "entity-rien",
+            "source": "bm25",
+            "type": "entity",
+            "title": "리엔",
+            "score": 1.2
+          },
+          {
+            "id": "chapter-map",
+            "source": "bm25",
+            "type": "chapter",
+            "title": "지도 조각",
+            "score": 0.6
+          }
+        ]
+      },
+      {
+        "id": "hybrid-missing-vector-source",
+        "query": "리엔과 카이의 관계가 드러나는 장면",
+        "expectedEntityIds": ["entity-rien", "entity-kai"],
+        "expectedChapterIds": ["chapter-bond"],
+        "requiredSources": ["graph", "vector", "bm25"],
+        "results": [
+          {
+            "id": "entity-rien",
+            "source": "graph",
+            "type": "entity",
+            "title": "리엔",
+            "score": 1
+          },
+          {
+            "id": "entity-kai",
+            "source": "graph",
+            "type": "entity",
+            "title": "카이",
+            "score": 0.95
+          },
+          {
+            "id": "chapter-bond",
+            "source": "bm25",
+            "type": "chapter",
+            "title": "검은 서고",
+            "score": 0.8
+          }
+        ]
+      }
+    ]
+  }
+}

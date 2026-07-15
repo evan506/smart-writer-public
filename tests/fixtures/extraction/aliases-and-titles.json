@@ -1,0 +1,64 @@
+{
+  "description": "Same-batch title plus name expressions become alias refs, while prefix full-name expansions stay mergeable entities.",
+  "entities": [
+    {
+      "name": "세린",
+      "type": "CHARACTER",
+      "confidence": 0.9,
+      "context_snippet": "세린은 밤의 성벽 위에 섰다."
+    },
+    {
+      "name": "달빛 기사 세린",
+      "type": "CHARACTER",
+      "confidence": 0.86,
+      "context_snippet": "사람들은 세린을 달빛 기사 세린이라 불렀다."
+    },
+    {
+      "name": "하린",
+      "type": "CHARACTER",
+      "confidence": 0.82,
+      "context_snippet": "하린은 오래된 문장을 품고 있었다."
+    },
+    {
+      "name": "하린 베르",
+      "type": "CHARACTER",
+      "confidence": 0.84,
+      "context_snippet": "하린 베르는 잊힌 가문의 이름을 밝혔다."
+    },
+    {
+      "name": "리엔",
+      "type": "CHARACTER",
+      "confidence": 0.88,
+      "context_snippet": "리엔은 북문 앞에서 암호를 들었다."
+    },
+    {
+      "name": "외팔 경비병 리엔",
+      "type": "CHARACTER",
+      "confidence": 0.82,
+      "context_snippet": "사람들은 리엔을 외팔 경비병 리엔이라고 불렀다."
+    },
+    {
+      "name": "외팔 경비병",
+      "type": "CHARACTER",
+      "confidence": 0.72,
+      "context_snippet": "외팔 경비병은 매번 리엔에게 암호를 알려주었다."
+    }
+  ],
+  "expectedAliasRefs": [
+    {
+      "name": "달빛 기사 세린",
+      "alias_of": "세린"
+    },
+    {
+      "name": "외팔 경비병 리엔",
+      "alias_of": "리엔"
+    }
+  ],
+  "expectedNonAliasRefs": [
+    "세린",
+    "하린",
+    "하린 베르",
+    "리엔",
+    "외팔 경비병"
+  ]
+}

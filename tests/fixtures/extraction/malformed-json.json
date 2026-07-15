@@ -1,0 +1,26 @@
+{
+  "description": "LLM parser extracts fenced/prefixed arrays, repairs quote/trailing comma issues, and returns null for unrecoverable JSON.",
+  "cases": [
+    {
+      "raw": "후보입니다:\n[{\"name\":\"하린\",\"type\":\"CHARACTER\"}]",
+      "expected": [
+        {
+          "name": "하린",
+          "type": "CHARACTER"
+        }
+      ]
+    },
+    {
+      "raw": "```json\n[\n  {\n    \"summary\": \"그가 \"검은 왕\"이라고 말했다\",\n  }\n]\n```",
+      "expected": [
+        {
+          "summary": "그가 '검은 왕'이라고 말했다"
+        }
+      ]
+    },
+    {
+      "raw": "응답 실패: [ { name: 하린 }",
+      "expected": null
+    }
+  ]
+}

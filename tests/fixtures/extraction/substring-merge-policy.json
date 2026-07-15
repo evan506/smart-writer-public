@@ -1,0 +1,29 @@
+{
+  "description": "Only character prefix abbreviations are auto-mergeable; title suffixes and non-character concepts are not.",
+  "cases": [
+    {
+      "shorterName": "하린",
+      "longerName": "하린 베르",
+      "type": "CHARACTER",
+      "expected": true
+    },
+    {
+      "shorterName": "세린",
+      "longerName": "달빛 기사 세린",
+      "type": "CHARACTER",
+      "expected": false
+    },
+    {
+      "shorterName": "수인",
+      "longerName": "늑대 수인",
+      "type": "CONCEPT",
+      "expected": false
+    },
+    {
+      "shorterName": "탑",
+      "longerName": "검은 탑",
+      "type": "PLACE",
+      "expected": false
+    }
+  ]
+}

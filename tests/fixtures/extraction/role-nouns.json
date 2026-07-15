@@ -1,0 +1,27 @@
+{
+  "description": "Standalone role nouns are filtered, while qualified Korean webnovel-style titles remain candidates.",
+  "candidates": [
+    "전령",
+    "경비병",
+    "영주",
+    "왕",
+    "상인",
+    "주인",
+    "북문 전령",
+    "외팔 경비병",
+    "잡화점 주인",
+    "말하는 소머리 수인",
+    "붉은 성의 영주",
+    "달빛 기사 세린",
+    "검은 탑의 왕"
+  ],
+  "expectedCandidates": [
+    "북문 전령",
+    "외팔 경비병",
+    "잡화점 주인",
+    "말하는 소머리 수인",
+    "붉은 성의 영주",
+    "달빛 기사 세린",
+    "검은 탑의 왕"
+  ]
+}

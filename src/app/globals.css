@@ -1,0 +1,398 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --radius-sm: calc(var(--radius) - 4px);
+    --radius-md: calc(var(--radius) - 2px);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) + 4px);
+    --radius-2xl: calc(var(--radius) + 8px);
+    --radius-3xl: calc(var(--radius) + 12px);
+    --radius-4xl: calc(var(--radius) + 16px);
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-destructive: var(--destructive);
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+    --color-chart-1: var(--chart-1);
+    --color-chart-2: var(--chart-2);
+    --color-chart-3: var(--chart-3);
+    --color-chart-4: var(--chart-4);
+    --color-chart-5: var(--chart-5);
+    --color-sidebar: var(--sidebar);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+
+    /* ── Smart Writer DS v2: Backgrounds ── */
+    --color-sw-bg-base: var(--sw-bg-base);
+    --color-sw-bg-surface: var(--sw-bg-surface);
+    --color-sw-bg-elevated: var(--sw-bg-elevated);
+    --color-sw-bg-overlay: var(--sw-bg-overlay);
+    --color-sw-bg-hover: var(--sw-bg-hover);
+    --color-sw-bg-active: var(--sw-bg-active);
+
+    /* ── Smart Writer DS v2: Text ── */
+    --color-sw-text-primary: var(--sw-text-primary);
+    --color-sw-text-secondary: var(--sw-text-secondary);
+    --color-sw-text-muted: var(--sw-text-muted);
+    --color-sw-text-dim: var(--sw-text-dim);
+    --color-sw-text-ghost: var(--sw-text-ghost);
+
+    /* ── Smart Writer DS v2: Borders ── */
+    --color-sw-border-subtle: var(--sw-border-subtle);
+    --color-sw-border-default: var(--sw-border-default);
+    --color-sw-border-hover: var(--sw-border-hover);
+    --color-sw-border-focus: var(--sw-border-focus);
+
+    /* ── Smart Writer DS v2: Accent ── */
+    --color-sw-accent: var(--sw-accent);
+    --color-sw-accent-bg: var(--sw-accent-bg);
+    --color-sw-accent-border: var(--sw-accent-border);
+
+    /* ── Smart Writer DS v2: CTA ── */
+    --color-sw-cta: var(--sw-cta);
+    --color-sw-cta-soft: var(--sw-cta-soft);
+
+    /* ── Smart Writer DS v2: Semantic ── */
+    --color-sw-success: var(--sw-success);
+    --color-sw-danger: var(--sw-danger);
+    --color-sw-warning: var(--sw-warning);
+    --color-sw-warn-soft: var(--sw-warn-soft);
+    --color-sw-info: var(--sw-info);
+    --color-sw-link: var(--sw-link);
+    --color-sw-link-soft: var(--sw-link-soft);
+    --color-sw-link-border: var(--sw-link-border);
+
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   SMART WRITER DESIGN SYSTEM v2 — CSS Custom Properties
+   Paper Light is the V1 app-wide baseline.
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+:root {
+    /* ── Backgrounds — paper and warm neutral ── */
+    --sw-bg-base: #f8f4ec;
+    --sw-bg-surface: #fbf7ee;
+    --sw-bg-elevated: #fffaf1;
+    --sw-bg-overlay: #fffdf8;
+    --sw-bg-hover: #f3ecdf;
+    --sw-bg-active: rgba(79, 140, 92, 0.1);
+    --sw-bg-editor: #fffaf1;
+    --sw-bg-raised: #f3ecdf;
+    /* Card surface — referenced widely; alias of elevated so cards track the
+       paper palette. Was previously undefined (invalid computed value). */
+    --sw-bg-card: var(--sw-bg-elevated);
+
+    /* ── Text — warm charcoal ── */
+    --sw-text-primary: #2a2622;
+    --sw-text-secondary: #4f473d;
+    --sw-text-muted: #6b6358;
+    --sw-text-dim: #9a9082;
+    --sw-text-ghost: #b9ae9d;
+
+    /* ── Borders ── */
+    --sw-border-subtle: rgba(89, 68, 39, 0.08);
+    /* Muted border — between subtle and default; was previously undefined. */
+    --sw-border-muted: rgba(89, 68, 39, 0.14);
+    --sw-border-default: #e8e0ce;
+    --sw-border-hover: #d9ceb9;
+    --sw-border-focus: rgba(79, 140, 92, 0.32);
+
+    /* ── Accent — restrained green ── */
+    --sw-accent: #4f8c5c;
+    --sw-accent-bg: rgba(79, 140, 92, 0.1);
+    --sw-accent-border: rgba(79, 140, 92, 0.24);
+
+    /* ── CTA ── */
+    --sw-cta: #4f8c5c;
+    --sw-cta-soft: rgba(79, 140, 92, 0.1);
+
+    /* ── Semantic ── */
+    --sw-success: #4f8c5c;
+    --sw-danger: #a35a45;
+    --sw-warning: #b6862a;
+    --sw-warn-soft: rgba(182, 134, 42, 0.12);
+    --sw-info: #6d7f63;
+
+    /* ── Manual author link (V3.3 plot-thread matrix) — muted blue, distinct
+       from green author-approved/evidence; follows Paper Light + Warm Neutral ── */
+    --sw-link: #4c6f8f;
+    --sw-link-soft: rgba(76, 111, 143, 0.1);
+    --sw-link-border: rgba(76, 111, 143, 0.26);
+
+    /* ── Typography (CSS vars only, not Tailwind tokens) ── */
+    --sw-font-sans: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --sw-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+    /* ── Animations (CSS vars only) ── */
+    --sw-anim-fade-in: sw-fade-in 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    --sw-anim-fade-slide-up: sw-fade-slide-up 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    --sw-anim-slide-in: sw-slide-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+:root {
+    --radius: 0.625rem;
+    --background: oklch(1 0 0);
+    --foreground: oklch(0.145 0 0);
+    --card: oklch(1 0 0);
+    --card-foreground: oklch(0.145 0 0);
+    --popover: oklch(1 0 0);
+    --popover-foreground: oklch(0.145 0 0);
+    --primary: oklch(0.205 0 0);
+    --primary-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.97 0 0);
+    --secondary-foreground: oklch(0.205 0 0);
+    --muted: oklch(0.97 0 0);
+    --muted-foreground: oklch(0.556 0 0);
+    --accent: oklch(0.97 0 0);
+    --accent-foreground: oklch(0.205 0 0);
+    --destructive: oklch(0.577 0.245 27.325);
+    --border: oklch(0.922 0 0);
+    --input: oklch(0.922 0 0);
+    --ring: oklch(0.708 0 0);
+    --chart-1: oklch(0.646 0.222 41.116);
+    --chart-2: oklch(0.6 0.118 184.704);
+    --chart-3: oklch(0.398 0.07 227.392);
+    --chart-4: oklch(0.828 0.189 84.429);
+    --chart-5: oklch(0.769 0.188 70.08);
+    --sidebar: var(--sw-bg-surface);
+    --sidebar-foreground: var(--sw-text-primary);
+    --sidebar-primary: var(--sw-accent);
+    --sidebar-primary-foreground: #fffaf1;
+    --sidebar-accent: var(--sw-bg-active);
+    --sidebar-accent-foreground: var(--sw-accent);
+    --sidebar-border: var(--sw-border-default);
+    --sidebar-ring: var(--sw-border-focus);
+}
+
+.dark {
+    --background: oklch(0.145 0 0);
+    --foreground: oklch(0.985 0 0);
+    --card: oklch(0.205 0 0);
+    --card-foreground: oklch(0.985 0 0);
+    --popover: oklch(0.205 0 0);
+    --popover-foreground: oklch(0.985 0 0);
+    --primary: oklch(0.922 0 0);
+    --primary-foreground: oklch(0.205 0 0);
+    --secondary: oklch(0.269 0 0);
+    --secondary-foreground: oklch(0.985 0 0);
+    --muted: oklch(0.269 0 0);
+    --muted-foreground: oklch(0.708 0 0);
+    --accent: oklch(0.269 0 0);
+    --accent-foreground: oklch(0.985 0 0);
+    --destructive: oklch(0.704 0.191 22.216);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.556 0 0);
+    --chart-1: oklch(0.488 0.243 264.376);
+    --chart-2: oklch(0.696 0.17 162.48);
+    --chart-3: oklch(0.769 0.188 70.08);
+    --chart-4: oklch(0.627 0.265 303.9);
+    --chart-5: oklch(0.645 0.246 16.439);
+    --sidebar: #0a0e1a;
+    --sidebar-foreground: #e8ecf4;
+    --sidebar-primary: #7dd3a8;
+    --sidebar-primary-foreground: #0a0e1a;
+    --sidebar-accent: rgba(125, 211, 168, 0.1);
+    --sidebar-accent-foreground: #7dd3a8;
+    --sidebar-border: rgba(255, 255, 255, 0.08);
+    --sidebar-ring: rgba(125, 211, 168, 0.3);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    background: var(--sw-bg-base);
+    color: var(--sw-text-primary);
+    }
+}
+
+/* Tiptap editor */
+.tiptap:focus {
+  outline: none;
+}
+.tiptap p.is-editor-empty:first-child::before {
+  color: var(--sw-text-ghost);
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Write v2 — Serif editor typography */
+.write-editor-body .tiptap {
+  font-family: 'Noto Serif KR', serif;
+  font-size: 16px;
+  line-height: 1.82;
+  color: var(--sw-text-primary);
+  letter-spacing: 0;
+}
+.write-editor-body .tiptap p {
+  margin-bottom: 10px;
+}
+.write-editor-body .tiptap p:empty,
+.write-editor-body .tiptap p:has(> br.ProseMirror-trailingBreak:only-child) {
+  min-height: 8px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.write-editor-body .tiptap p:last-child {
+  margin-bottom: 0;
+}
+/* Entity highlight text stays bright */
+.write-editor-body .tiptap [data-entity-type] {
+  color: var(--sw-text-primary);
+}
+
+/* Warning highlight styles */
+.warning-high {
+  background-color: rgba(163, 90, 69, 0.12);
+  border-bottom: 2px wavy var(--sw-danger);
+  cursor: pointer;
+}
+.warning-medium {
+  background-color: var(--sw-warn-soft);
+  border-bottom: 2px wavy var(--sw-warning);
+  cursor: pointer;
+}
+.warning-low {
+  background-color: var(--sw-accent-bg);
+  border-bottom: 2px dashed var(--sw-accent);
+  cursor: pointer;
+}
+
+/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   SMART WRITER DS v2 — Keyframes & Utilities
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
+
+@keyframes sw-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sw-fade-slide-up {
+  from { transform: translateY(6px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes sw-slide-in {
+  from { transform: translateX(12px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes sw-pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ── Write workspace scrollbar ── */
+.sw-scrollbar::-webkit-scrollbar { width: 3px; }
+.sw-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.sw-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--sw-border-default);
+  border-radius: 4px;
+}
+.sw-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--sw-border-hover);
+}
+
+/* Surface-bg variant */
+.sw-scrollbar-surface::-webkit-scrollbar { width: 3px; }
+.sw-scrollbar-surface::-webkit-scrollbar-track { background: var(--sw-bg-surface); }
+.sw-scrollbar-surface::-webkit-scrollbar-thumb {
+  background: var(--sw-border-default);
+  border-radius: 4px;
+}
+.sw-scrollbar-surface::-webkit-scrollbar-thumb:hover {
+  background: var(--sw-border-hover);
+}
+
+/* Sidebar scrollbar (matches --sidebar bg) */
+[data-sidebar="content"] {
+  scrollbar-width: thin;
+  scrollbar-color: var(--sw-border-default) transparent;
+}
+[data-sidebar="content"]::-webkit-scrollbar { width: 3px; }
+[data-sidebar="content"]::-webkit-scrollbar-track { background: transparent; }
+[data-sidebar="content"]::-webkit-scrollbar-thumb {
+  background: var(--sw-border-default);
+  border-radius: 4px;
+}
+[data-sidebar="content"]::-webkit-scrollbar-thumb:hover {
+  background: var(--sw-border-hover);
+}
+
+/* ── Glass effect utility ── */
+.sw-glass {
+  background: var(--sw-bg-elevated);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--sw-border-default);
+}
+.sw-glass-heavy {
+  background: var(--sw-bg-overlay);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--sw-border-default);
+}
+
+/* ── Label typography ── */
+.sw-label {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--sw-text-dim);
+}
+
+/* ── Mono stat ── */
+.sw-mono {
+  font-family: var(--sw-font-mono);
+  font-weight: 700;
+}
+
+/* ── Suggestion review focus target ── */
+[data-suggestion-id][data-highlighted="true"] {
+  border: 1px solid var(--sw-warning) !important;
+  box-shadow: 0 0 0 3px rgba(182, 134, 42, 0.14) !important;
+}
+
+/* ── Font utilities ── */
+.font-sw-sans {
+  font-family: var(--sw-font-sans);
+}
+
+/* ── Animation utilities ── */
+.animate-sw-slide-in {
+  animation: var(--sw-anim-slide-in);
+}
+.animate-sw-fade-in {
+  animation: var(--sw-anim-fade-in);
+}
+.animate-sw-fade-slide-up {
+  animation: var(--sw-anim-fade-slide-up);
+}
