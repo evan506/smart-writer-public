@@ -406,3 +406,27 @@ describe("entity extraction runner helpers", () => {
     expect(result.pendingCandidates).toEqual([auto, pending, lowAlias, highAlias]);
   });
 });
+
+
+describe("source-grounded kinship summaries", () => {
+  const source = "라온은 유리항의 등대지기다. 미루는 라온의 여동생이며 지도 제작자다.";
+  it.each(["유리항의 등대지기이며 미루의 오빠", "미루의 언니", "미루와 남매인 등대지기", "미루의 오 빠"])(
+    "replaces unsupported gendered kinship with verbatim evidence: %s", summary => {
+      const [result] = normalizeClassifiedEntitiesForRunner([classified({
+        name: "라온", summary, context_snippet: "라온은 유리항의 등대지기다.",
+      })], source);
+      expect(result.summary).toBe("라온은 유리항의 등대지기다.");
+      expect(partitionEntityWriteCandidates([result]).toAutoConfirm).toEqual([]);
+    }
+  );
+  it("keeps an explicitly stated kinship and ordinary occupation summaries", () => {
+    const [explicit] = normalizeClassifiedEntitiesForRunner([classified({name: "라온", summary: "미루의 오빠", context_snippet: "라온은 미루의 오빠다."})], "라온은 미루의 오빠다.");
+    expect(explicit.summary).toBe("미루의 오빠");
+    const [occupation] = normalizeClassifiedEntitiesForRunner([classified({name: "라온", summary: "유리항의 등대지기"})], source);
+    expect(occupation.summary).toBe("유리항의 등대지기");
+  });
+  it("does not replace an unsupported claim with invented evidence", () => {
+    const [result] = normalizeClassifiedEntitiesForRunner([classified({name: "라온", summary: "미루의 오빠", context_snippet: "라온은 왕자다."})], source);
+    expect(result.summary).toBe("");
+  });
+});

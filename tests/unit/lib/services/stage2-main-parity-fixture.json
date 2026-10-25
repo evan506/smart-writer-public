@@ -1,5 +1,5 @@
 {
-  "baseline": "53a95480172a9821eb0b90aa7a1cd710f1cc91d4",
+  "baseline": "public-stage2-v2-20261025",
   "names": [
     "인물0",
     "인물1",
@@ -38,8 +38,8 @@
       "count": 0,
       "requests": [
         {
-          "systemSha256": "4aad432f665cb2470d511139b7e2c36151c805aa642665dad95f27beb2efcfd1",
-          "userSha256": "85f0582dbd9ba38a9aadfc7bbd8db55b6d8c29ace687093500093bed51147eaf"
+          "systemSha256": "0a91265fc26bd31edb663c14427172a98fb222905a71ab054659ed2399b4091e",
+          "userSha256": "e9aa6dc6062fb0fb1ad9a19bac382a3454f8f879e251964ff28d6e5de31215c2"
         }
       ]
     },
@@ -47,8 +47,8 @@
       "count": 1,
       "requests": [
         {
-          "systemSha256": "4aad432f665cb2470d511139b7e2c36151c805aa642665dad95f27beb2efcfd1",
-          "userSha256": "7d856d6f8c7f081bbdc0c9e6a88e1310d4567495e009caaf5c5ac47ca2ff65b0"
+          "systemSha256": "0a91265fc26bd31edb663c14427172a98fb222905a71ab054659ed2399b4091e",
+          "userSha256": "88717649a29df8cf6c7ae70f43bd881348bb1a20f566a580ac936ddc2aa984bc"
         }
       ]
     },
@@ -56,8 +56,8 @@
       "count": 10,
       "requests": [
         {
-          "systemSha256": "4aad432f665cb2470d511139b7e2c36151c805aa642665dad95f27beb2efcfd1",
-          "userSha256": "d033b1cdfd684bc4e5018d7e7a19bb3cff41a4bcc2e68eb8153b49c97eae4ce6"
+          "systemSha256": "0a91265fc26bd31edb663c14427172a98fb222905a71ab054659ed2399b4091e",
+          "userSha256": "3242ebdb410d90c04db3fa21ee31e10988f42d6d172929044b7072938efb7ce9"
         }
       ]
     },
@@ -65,12 +65,12 @@
       "count": 11,
       "requests": [
         {
-          "systemSha256": "4aad432f665cb2470d511139b7e2c36151c805aa642665dad95f27beb2efcfd1",
-          "userSha256": "d033b1cdfd684bc4e5018d7e7a19bb3cff41a4bcc2e68eb8153b49c97eae4ce6"
+          "systemSha256": "0a91265fc26bd31edb663c14427172a98fb222905a71ab054659ed2399b4091e",
+          "userSha256": "3242ebdb410d90c04db3fa21ee31e10988f42d6d172929044b7072938efb7ce9"
         },
         {
-          "systemSha256": "4aad432f665cb2470d511139b7e2c36151c805aa642665dad95f27beb2efcfd1",
-          "userSha256": "cb1d6caefc9d6ba93b07af8d571e26c5d5a29ff5167adb3296ef8675ac97eadc"
+          "systemSha256": "0a91265fc26bd31edb663c14427172a98fb222905a71ab054659ed2399b4091e",
+          "userSha256": "660623e8f9b78d6e4ed7de7f1eb6b2c39ea2bfc282effc73b012ea6aa31157b5"
         }
       ]
     },
@@ -78,12 +78,12 @@
       "count": 20,
       "requests": [
         {
-          "systemSha256": "4aad432f665cb2470d511139b7e2c36151c805aa642665dad95f27beb2efcfd1",
-          "userSha256": "d033b1cdfd684bc4e5018d7e7a19bb3cff41a4bcc2e68eb8153b49c97eae4ce6"
+          "systemSha256": "0a91265fc26bd31edb663c14427172a98fb222905a71ab054659ed2399b4091e",
+          "userSha256": "3242ebdb410d90c04db3fa21ee31e10988f42d6d172929044b7072938efb7ce9"
         },
         {
-          "systemSha256": "4aad432f665cb2470d511139b7e2c36151c805aa642665dad95f27beb2efcfd1",
-          "userSha256": "498dc69ac0a9eedf4c1a2391bdf55096ba3601d719a2172fccccc34fe9983966"
+          "systemSha256": "0a91265fc26bd31edb663c14427172a98fb222905a71ab054659ed2399b4091e",
+          "userSha256": "034d6d9fc533b5e450064efd563b8b1827d6c65e10370aac73fddfa037557ebe"
         }
       ]
     }

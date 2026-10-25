@@ -223,8 +223,12 @@ tests/                 unit, integration, e2e
 
 ## Public snapshot verification (2026-10-25)
 
-- Unit tests: **1,065 passed across 131 files**, configured coverage thresholds passed.
+- Unit tests: **1,074 passed across 131 files**, configured coverage thresholds passed.
 - ESLint, app/script typechecks, knip and production build passed.
 - Basic browser run: **1 passed, 17 skipped** (DB/auth-gated cases).
 - DB/authenticated checks are reported separately by GitHub Actions.
 - Private-data diagnostic suites were excluded; counts differ from the working repository. These checks do not establish model-answer quality or demo deployment parity.
+
+## Real provider verification
+
+On 2026-10-25, the public snapshot was tested with a synthetic chapter and real OpenRouter extraction, embeddings and Q&A. Unsupported gendered-kinship inference was found and guarded. See [the verification record](LIVE_AI_VERIFICATION.md) for models, observed results, limitations, and the explicitly opt-in paid test. This is a bounded example, not a general semantic-quality guarantee.

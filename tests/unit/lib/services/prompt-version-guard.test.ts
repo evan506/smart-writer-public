@@ -64,10 +64,10 @@ function renderCanonical(key: PromptTemplateKey): string | null {
 // intentionally updating a template.
 const RECORDED: Record<PromptTemplateKey, { version: string; hash: string | null }> = {
   "entity_extraction.stage1_nouns": { version: "v1-public-20261025", hash: "239616bd3c3705f6" },
-  "entity_extraction.stage2_classify": { version: "v1", hash: "d91a8b2e9793f03a" },
+  "entity_extraction.stage2_classify": { version: "v2-public-20261025", hash: "d8b2fbaa6a286503" },
   "entity_extraction.stage3_relations": { version: "v1", hash: "6b6326a463d39e76" },
   "analysis.chapter": { version: "v1", hash: "1acf7d1d882570ba" },
-  canon_qna: { version: "v2", hash: "f868be393ac98283" },
+  canon_qna: { version: "v3-public-20261025", hash: "7c93746faa31b192" },
   "extraction_memory.distillation": { version: "v1", hash: "68ea402a5dbe7697" },
 };
 

@@ -1,3 +1,4 @@
+import { hasUnsupportedKinshipClaim } from "./evidence-claims";
 import { createLLMBudgetGuard } from "./llm-budget.service";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
@@ -425,8 +426,9 @@ export class CanonQAService {
       };
     }
 
-    const raw = await callLLM({
-      ...buildCanonQAPrompt(question, buildEvidenceBlock(evidenceItems)),
+    const prompt = buildCanonQAPrompt(question, buildEvidenceBlock(evidenceItems));
+    const request = {
+      ...prompt,
       maxTokens: 700,
       model: getLLMModel("canonQnA"),
       temperature: 0,
@@ -438,9 +440,27 @@ export class CanonQAService {
         promptTemplateKey: "canon_qna",
         promptTemplateVersion: getPromptTemplateVersion("canon_qna"),
       }, { failOnError: true }),
-    });
-
-    const parsed = parseCanonQAResponse(raw, evidenceItems.length);
+    };
+    let raw = await callLLM(request);
+    let parsed = parseCanonQAResponse(raw, evidenceItems.length);
+    const evidenceText = evidenceItems.map(item => item.content).join("\n");
+    if (hasUnsupportedKinshipClaim(parsed.answer ?? "", evidenceText)) {
+      // At most one repair; use the same budget guard and per-call usage logger.
+      raw = await callLLM({
+        ...request,
+        user: `${prompt.user}\n\n[검증 피드백] 직전 답변에 근거에 없는 친족 호칭이 포함되었습니다. 질문의 핵심만 답하고 성별·친족 호칭의 추정이나 불필요한 괄호 설명을 추가하지 마세요.`,
+      });
+      parsed = parseCanonQAResponse(raw, evidenceItems.length);
+      if (hasUnsupportedKinshipClaim(parsed.answer ?? "", evidenceText)) {
+        return {
+          question,
+          answer: INSUFFICIENT_ANSWER,
+          status: "insufficient_evidence",
+          citations: [],
+          latencyMs: Math.round(performance.now() - startedAt),
+        };
+      }
+    }
     const citations = parsed.citationIndexes.map((index) => {
       const item = evidenceItems[index - 1];
       return {

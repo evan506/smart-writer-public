@@ -22,9 +22,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllEnvs());
 
-// Frozen hashes were generated from actual pinned-main prompt code, not the current builder.
+// Frozen hashes record the reviewed public stage-2 v2 SDK requests (2026-10-25).
 // Fixtures contain synthetic sentences only; CI never needs git history or a network connection.
-it.each(fixture.rows)("matches pinned main complete SDK request for $count candidates", async ({ count, requests }) => {
+it.each(fixture.rows)("matches pinned public baseline complete SDK request for $count candidates", async ({ count, requests }) => {
   const beforeRequest = vi.fn(), onComplete = vi.fn();
   await expect(stage2Classify(fixture.names.slice(0, count), fixture.text, fixture.known,
     { guidanceBlock: fixture.guidance, beforeRequest, onComplete })).resolves.toEqual([]);

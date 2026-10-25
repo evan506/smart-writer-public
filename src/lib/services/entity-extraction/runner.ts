@@ -1,3 +1,4 @@
+import { hasUnsupportedKinshipClaim } from "../evidence-claims";
 import type {
   ClassifiedEntity,
   ExtractedEntity,
@@ -76,7 +77,7 @@ export function normalizeClassifiedEntitiesForRunner(
             type: normalizeEntityType(candidate.type)!,
             sub_type: candidate.sub_type,
             alias_of: candidate.alias_of,
-            summary: candidate.summary || "",
+            summary: groundCandidateSummary(candidate, sourceText),
             aliases: [],
             confidence: candidate.confidence,
             context_snippet: candidate.context_snippet || "",
@@ -85,6 +86,17 @@ export function normalizeClassifiedEntitiesForRunner(
       )
     )
   );
+}
+
+// A source substring does not prove that every claim in an AI summary is grounded.
+// In particular, a younger sister does not establish the other person's gender.
+// This lexical guard is intentionally narrow; writer review is still required.
+function groundCandidateSummary(candidate: ClassifiedEntity, sourceText: string): string {
+  const summary = candidate.summary || "";
+  const unsupportedKinship = hasUnsupportedKinshipClaim(summary, sourceText);
+  if (!unsupportedKinship) return summary;
+  const evidence = candidate.context_snippet?.trim() || "";
+  return evidence && sourceContainsEvidenceSnippet(sourceText, evidence) ? evidence : "";
 }
 
 function normalizeCandidateFacts(

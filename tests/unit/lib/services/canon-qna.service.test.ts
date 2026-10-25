@@ -730,3 +730,35 @@ describe("QA evidence deduplication contract", () => {
     expect(user.includes("결말은 부정됐다")).toBe(canonical);
   });
 });
+
+describe("Q&A source-grounded kinship repair", () => {
+  const bad = JSON.stringify({status: "answered", answer: "라온(미루의 오빠)이 푸른 열쇠를 소유합니다.", citation_indexes: [1]});
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSearchService([]);
+    mockListApprovedCodexFactsByEntity.mockResolvedValue({});
+    mockRAGSearch([{id: "synthetic", source: "bm25", type: "chapter", title: "합성 원고", content: "미루는 라온의 여동생이다. 라온은 푸른 열쇠를 소유한다.", score: 1}]);
+  });
+  it("repairs an unsupported kinship once while preserving the answer and citation", async () => {
+    mockCallLLM.mockResolvedValueOnce(bad).mockResolvedValueOnce(JSON.stringify({status: "answered", answer: "라온이 푸른 열쇠를 소유합니다.", citation_indexes: [1]}));
+    const result = await new CanonQAService(createSupabaseMock()).ask({projectId: "synthetic", question: "미루가 푸른 열쇠를 소유하나요?"});
+    expect(result.answer).toBe("라온이 푸른 열쇠를 소유합니다.");
+    expect(result.citations).toHaveLength(1);
+    expect(mockCallLLM).toHaveBeenCalledTimes(2);
+    expect(mockCallLLM.mock.calls[1][0].beforeRequest).toBe(mockCallLLM.mock.calls[0][0].beforeRequest);
+    expect(mockCallLLM.mock.calls[1][0].onComplete).toBe(mockCallLLM.mock.calls[0][0].onComplete);
+  });
+  it("withholds a still-unsupported answer after one repair and makes no third call", async () => {
+    mockCallLLM.mockResolvedValue(bad);
+    const result = await new CanonQAService(createSupabaseMock()).ask({projectId: "synthetic", question: "소유자는 누구인가요?"});
+    expect(result.status).toBe("insufficient_evidence");
+    expect(result.answer).not.toContain("오빠");
+    expect(result.citations).toEqual([]);
+    expect(mockCallLLM).toHaveBeenCalledTimes(2);
+  });
+  it("does not return the unsafe first answer when the repair call is blocked", async () => {
+    mockCallLLM.mockResolvedValueOnce(bad).mockRejectedValueOnce(new Error("LLM_BUDGET_BLOCKED"));
+    await expect(new CanonQAService(createSupabaseMock()).ask({projectId: "synthetic", question: "소유자는 누구인가요?"})).rejects.toThrow("LLM_BUDGET_BLOCKED");
+    expect(mockCallLLM).toHaveBeenCalledTimes(2);
+  });
+});
