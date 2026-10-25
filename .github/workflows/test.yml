@@ -18,7 +18,7 @@ concurrency:
 jobs:
   test:
     name: lint, typecheck, unit, e2e, build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     env:
@@ -72,7 +72,7 @@ jobs:
 
   db-backed-integration:
     name: DB-backed integration regressions
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
 
     env:
