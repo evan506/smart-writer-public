@@ -72,3 +72,18 @@ TODO.md
 TEMPLATE.md
 skills-lock.json
 manifest.json
+
+# Public export exclusions
+!/.env.example
+.cstack/
+.omx/
+.worktrees/
+PROJECT.md
+PROJECT_CONTEXT.json
+DESIGN.md
+AGENTS*.md
+README.ko.md
+references/
+eval-reports/
+*.sql.dump
+*.log

@@ -33,7 +33,7 @@ export function CodexEntityList({
   onEntityClick,
 }: CodexEntityListProps) {
   return (
-    <div className="flex-1 overflow-y-auto px-5 pb-5 min-w-0 sw-scrollbar">
+    <div className="@container flex-1 overflow-y-auto px-4 pb-5 min-w-0 sw-scrollbar">
       {filteredEntities.length === 0 ? (
         <div
           className="flex items-center justify-center h-40 text-[13px]"
@@ -41,7 +41,7 @@ export function CodexEntityList({
         >
           {searchQuery || typeFilter || statusFilter
             ? "검색 결과가 없습니다"
-            : "아직 작가 승인된 작품 기억이 없습니다. 후보 검토함에서 원문 근거를 확인하고 승인해 주세요."}
+            : "아직 저장된 작품 기억이 없습니다. 후보 검토함에서 원문 근거를 확인하고 승인해 주세요."}
         </div>
       ) : (
         groupedEntities.map((group) => (
@@ -125,7 +125,7 @@ function ColHeader({
 }) {
   return (
     <div
-      className={`text-[10px] font-medium tracking-wide flex-shrink-0 ${align === "right" ? "text-right" : "text-left"}`}
+      className={`hidden @min-[640px]:block text-[10px] font-medium tracking-wide flex-shrink-0 ${align === "right" ? "text-right" : "text-left"}`}
       style={{ width, color: "var(--sw-text-dim)" }}
     >
       {children}

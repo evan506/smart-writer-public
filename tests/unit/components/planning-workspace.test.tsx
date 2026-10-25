@@ -28,7 +28,7 @@ function planningBlock(overrides: Partial<PlanningBlock> = {}): PlanningBlock {
     parent_id: null,
     kind: "ROOT",
     title: "시작",
-    summary: "카이와 리엔의 만남",
+    summary: "리겔과 리엔의 만남",
     notes: null,
     status: "PLANNED",
     position: 0,
@@ -136,7 +136,7 @@ describe("PlanningWorkspace", () => {
       availableEntities: [
         {
           id: "entity-1",
-          name: "카이",
+          name: "리겔",
           type: "CHARACTER",
           summary: null,
         },
@@ -155,8 +155,8 @@ describe("PlanningWorkspace", () => {
       id: "episode-1",
       parent_id: start.id,
       kind: "EPISODE",
-      title: "카이와의 첫 만남",
-      summary: "카이와 리엔의 첫 만남에 대한 에피소드",
+      title: "리겔과의 첫 만남",
+      summary: "리겔과 리엔의 첫 만남에 대한 에피소드",
       status: "EXPANDED",
       position: 0,
       structure_key: null,
@@ -189,7 +189,7 @@ describe("PlanningWorkspace", () => {
 
     expect(html).toContain("현재 선택:");
     expect(html).toContain("시작의 구체화 카드");
-    expect(html).toContain("카이와의 첫 만남");
+    expect(html).toContain("리겔과의 첫 만남");
     expect(html).not.toContain("보이지 않아야 하는 장면");
   });
 
@@ -199,8 +199,8 @@ describe("PlanningWorkspace", () => {
       id: "episode-1",
       parent_id: start.id,
       kind: "EPISODE",
-      title: "카이와의 첫 만남",
-      summary: "카이와 리엔의 첫 만남에 대한 에피소드",
+      title: "리겔과의 첫 만남",
+      summary: "리겔과 리엔의 첫 만남에 대한 에피소드",
       position: 0,
       structure_key: null,
     });
@@ -208,9 +208,9 @@ describe("PlanningWorkspace", () => {
     const html = render([episode, start]);
 
     expect(html).toContain("선택한 구상 카드");
-    expect(html).toContain("시작 / 카이와의 첫 만남");
+    expect(html).toContain("시작 / 리겔과의 첫 만남");
     expect(html).toContain("선택됨");
-    expect(html).toContain("카이와의 첫 만남 아래에 추가");
+    expect(html).toContain("리겔과의 첫 만남 아래에 추가");
   });
 
   it("renders existing manuscript chapter references only for chapter planning cards", () => {
@@ -219,7 +219,7 @@ describe("PlanningWorkspace", () => {
       id: "episode-1",
       parent_id: start.id,
       kind: "EPISODE",
-      title: "카이와의 첫 만남",
+      title: "리겔과의 첫 만남",
       position: 0,
       structure_key: null,
     });
@@ -234,7 +234,7 @@ describe("PlanningWorkspace", () => {
     const chapter = {
       id: "manuscript-chapter-1",
       chapter_num: 1,
-      title: "카이와 리엔",
+      title: "리겔과 리엔",
       updated_at: "2026-06-07T00:00:00.000Z",
     };
 
@@ -251,7 +251,7 @@ describe("PlanningWorkspace", () => {
 
     expect(html).toContain("참조 중");
     expect(html).toContain("기존 회차 참조");
-    expect(html).toContain("1화 · 카이와 리엔");
+    expect(html).toContain("1화 · 리겔과 리엔");
     expect(html).toContain("원고와 canon은 자동 변경되지 않습니다.");
     expect(html).toContain(
       'href="/projects/11111111-1111-4111-8111-111111111111/write?chapter=manuscript-chapter-1"'
@@ -275,13 +275,13 @@ describe("PlanningWorkspace", () => {
       id: "character-card-1",
       parent_id: start.id,
       kind: "CHARACTER_PLAN",
-      title: "카이 인물 계획",
+      title: "리겔 인물 계획",
       position: 0,
       structure_key: null,
     });
     const entity = {
       id: "entity-1",
-      name: "카이",
+      name: "리겔",
       type: "CHARACTER",
       summary: "약해진 상태로 등장하는 핵심 인물",
     };
@@ -303,7 +303,7 @@ describe("PlanningWorkspace", () => {
             entityId: entity.id,
             factType: "STATE",
             factKey: "약화",
-            value: "카이는 초반부에 힘을 완전히 쓰지 못한다.",
+            value: "리겔은 초반부에 힘을 완전히 쓰지 못한다.",
             status: "APPROVED",
             confidence: 0.9,
             establishedChapterId: null,
@@ -317,10 +317,10 @@ describe("PlanningWorkspace", () => {
 
     expect(html).toContain("연결된 작품 기억");
     expect(html).toContain("작품 기억 연결");
-    expect(html).toContain("카이");
+    expect(html).toContain("리겔");
     expect(html).toContain("승인된 설정");
     expect(html).toContain("상태 · 약화");
-    expect(html).toContain("카이는 초반부에 힘을 완전히 쓰지 못한다.");
+    expect(html).toContain("리겔은 초반부에 힘을 완전히 쓰지 못한다.");
     expect(html).toContain("구상, 원고, canon은 자동 변경되지 않습니다.");
   });
 
@@ -330,13 +330,13 @@ describe("PlanningWorkspace", () => {
       id: "character-card-1",
       parent_id: start.id,
       kind: "CHARACTER_PLAN",
-      title: "카이 인물 계획",
+      title: "리겔 인물 계획",
       position: 0,
       structure_key: null,
     });
     const entity = {
       id: "entity-1",
-      name: "카이",
+      name: "리겔",
       type: "CHARACTER",
       summary: null,
     };
@@ -357,7 +357,7 @@ describe("PlanningWorkspace", () => {
     });
 
     expect(html).toContain("연결된 작품 기억");
-    expect(html).toContain("카이");
+    expect(html).toContain("리겔");
     expect(html).toContain("아직 이 작품 기억에 연결된 승인 설정이 없습니다.");
     expect(html).toContain("구상, 원고, canon은 자동 변경되지 않습니다.");
   });

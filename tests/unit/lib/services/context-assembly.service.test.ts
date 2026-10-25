@@ -324,3 +324,10 @@ describe("ContextAssemblyService.assemble", () => {
     });
   });
 });
+
+it("forwards the validated owner to internal RAG embeddings", async () => {
+  const { client } = createSupabaseMock(baseHandlers());
+  setupCollaborators();
+  await new ContextAssemblyService(client as never).assemble(PROJECT_ID, CHAPTER_ID, CONTENT, { userId: "owner-1" });
+  expect(searchMock).toHaveBeenCalledWith(PROJECT_ID, CONTENT.slice(0, 200), { userId: "owner-1", propagateBudgetErrors: true });
+});

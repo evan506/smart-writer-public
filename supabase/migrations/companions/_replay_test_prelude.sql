@@ -66,5 +66,9 @@ RETURNS text LANGUAGE sql STABLE AS $$
   )
 $$;
 
+GRANT USAGE ON SCHEMA auth TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION auth.uid() TO anon, authenticated, service_role;
+GRANT EXECUTE ON FUNCTION auth.role() TO anon, authenticated, service_role;
+
 -- pg_trgm provides extensions.gin_trgm_ops used by the baseline trgm indexes.
 CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions;

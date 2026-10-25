@@ -4,6 +4,11 @@ import { confirmEntitySuggestion } from "@/lib/services/suggestions/confirm-enti
 const afterMock = vi.hoisted(() => vi.fn());
 const createClientMock = vi.hoisted(() => vi.fn());
 const embedTextMock = vi.hoisted(() => vi.fn());
+const budgetedOptionsMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/services/budgeted-embedding", () => ({
+  createBudgetedEmbeddingOptions: budgetedOptionsMock,
+}));
 
 vi.mock("next/server", () => ({
   after: afterMock,
@@ -98,6 +103,7 @@ function createConfirmClient({
 describe("confirmEntitySuggestion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    budgetedOptionsMock.mockReset().mockReturnValue({ onComplete: vi.fn() });
     embedTextMock.mockResolvedValue([0.1, 0.2, 0.3]);
   });
 
@@ -272,5 +278,21 @@ describe("confirmEntitySuggestion", () => {
         "project-1"
       )
     ).resolves.toEqual({ error: "status failed" });
+  });
+  it("preserves manual confirmation and forwards owner when optional embedding is blocked", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      budgetedOptionsMock.mockImplementation(() => { throw new Error("budget blocked"); });
+      const { client } = createConfirmClient();
+const bg = createConfirmClient();
+createClientMock.mockResolvedValue(bg.client);
+const result = await confirmEntitySuggestion(client as never, { id: "suggestion-1", name: "리엔", type: "CHARACTER", summary: null, aliases: [] }, "project-1", undefined, "owner-1");
+      expect(result.error).toBeNull();
+      await expect(afterMock.mock.calls[0][0]()).resolves.toBeUndefined();
+      expect(budgetedOptionsMock).toHaveBeenCalledTimes(1);
+      expect(budgetedOptionsMock).toHaveBeenCalledWith(bg.client, expect.objectContaining({ projectId: "project-1", userId: "owner-1" }));
+      expect(embedTextMock).not.toHaveBeenCalled();
+      expect(bg.operations).toHaveLength(0);
+    } finally { log.mockRestore(); }
   });
 });

@@ -37,12 +37,13 @@ export function CodexPanel({
   const [graphModalOpen, setGraphModalOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const detailRef = useRef<HTMLDivElement>(null);
+  const currentSelectedEntityId = selectedEntity?.id ?? null;
 
   useEffect(() => {
-    if (selectedEntity && detailRef.current) {
+    if (currentSelectedEntityId && detailRef.current) {
       detailRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }
-  }, [selectedEntity?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentSelectedEntityId]);
 
   const fetchData = useCallback(async () => {
     const result = await getCodexData(projectId);
@@ -88,15 +89,11 @@ export function CodexPanel({
   }, [fetchData, saveSignal]);
 
   useEffect(() => {
-    if (!selectedEntity) return;
-
-    const updated = entities.find((entity) => entity.id === selectedEntity.id);
-    if (updated) {
-      setSelectedEntity(updated);
-    } else {
-      setSelectedEntity(null);
-    }
-  }, [entities]); // eslint-disable-line react-hooks/exhaustive-deps
+    setSelectedEntity((current) => {
+      if (!current) return current;
+      return entities.find((entity) => entity.id === current.id) ?? null;
+    });
+  }, [entities]);
 
   useEffect(() => {
     if (!selectedEntityId) return;

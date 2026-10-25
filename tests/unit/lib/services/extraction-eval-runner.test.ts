@@ -6,14 +6,14 @@ const scenarios: GoldenScenario[] = [
   {
     id: "s1",
     source: "test",
-    chapterText: "카이가 등장했다.",
-    shouldExtract: ["카이"],
+    chapterText: "리겔이 등장했다.",
+    shouldExtract: ["리겔"],
     shouldNotExtract: ["무명 병사"],
   },
   {
     id: "s2",
     source: "test",
-    chapterText: "리엔이 등장했다.",
+    chapterText: "리엔가 등장했다.",
     shouldExtract: ["리엔"],
     shouldNotExtract: [],
   },
@@ -31,7 +31,7 @@ function base() {
 describe("runEval", () => {
   it("scores each scenario from the injected extractor", async () => {
     const extract = vi.fn(async (text: string) =>
-      text.includes("카이") ? { names: ["카이"] } : { names: ["리엔"] }
+      text.includes("리겔") ? { names: ["리겔"] } : { names: ["리엔"] }
     );
     const run = await runEval({ ...base(), extract });
 
@@ -43,7 +43,7 @@ describe("runEval", () => {
 
   it("records a thrown extraction as an environment failure, not a product fail", async () => {
     const extract = vi.fn(async (text: string) => {
-      if (text.includes("카이")) throw new Error("LLM timeout");
+      if (text.includes("리겔")) throw new Error("LLM timeout");
       return { names: ["리엔"] };
     });
     const run = await runEval({ ...base(), extract });
@@ -68,8 +68,8 @@ describe("runEval", () => {
 
   it("penalizes a noisy extractor that surfaces dismissed names", async () => {
     const extract = vi.fn(async (text: string) =>
-      text.includes("카이")
-        ? { names: ["카이", "무명 병사"] } // false positive
+      text.includes("리겔")
+        ? { names: ["리겔", "무명 병사"] } // false positive
         : { names: ["리엔"] }
     );
     const run = await runEval({ ...base(), extract });
@@ -77,4 +77,37 @@ describe("runEval", () => {
     expect(s1.fp).toBe(1);
     expect(s1.score).toBeLessThan(100);
   });
+});
+
+it("bounded run stops on first failure and leaves later cases unexecuted", async () => {
+  const extract = vi.fn().mockRejectedValue(new Error("parse failure"));
+  const run = await runEval({ ...base(), extract, stopOnFailure: true });
+  expect(extract).toHaveBeenCalledTimes(1);
+  expect(run.status).toBe("aborted");
+  expect(run.results).toHaveLength(1);
+  expect(run.unexecutedScenarioIds).toEqual(["s2"]);
+});
+
+it("bounded run checks stop before scheduling a case", async () => {
+  const extract = vi.fn();
+  const run = await runEval({ ...base(), extract, shouldStop: () => "budget stop" });
+  expect(extract).not.toHaveBeenCalled();
+  expect(run.results).toHaveLength(0);
+  expect(run.unexecutedScenarioIds).toEqual(["s1", "s2"]);
+  expect(run.status).toBe("aborted");
+});
+
+it("empty error messages still mark a bounded run aborted", async () => {
+  const extract = vi.fn().mockRejectedValue(new Error(""));
+  const run = await runEval({ ...base(), extract, stopOnFailure: true });
+  expect(run.status).toBe("aborted");
+  expect(run.unexecutedScenarioIds).toEqual(["s2"]);
+});
+
+it("returned empty failure reason still aborts", async () => {
+  const extract = vi.fn().mockResolvedValue({ names: [], environmentFailure: true, error: "" });
+  const run = await runEval({ ...base(), extract, stopOnFailure: true });
+  expect(run.status).toBe("aborted");
+  expect(extract).toHaveBeenCalledTimes(1);
+  expect(run.unexecutedScenarioIds).toEqual(["s2"]);
 });

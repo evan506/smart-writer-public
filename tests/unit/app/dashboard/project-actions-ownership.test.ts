@@ -47,6 +47,7 @@ function createActionClient({
   entityLinks = [],
   foreshadows = [],
   suggestions = [],
+  selectErrors = {},
 }: {
   userId?: string | null;
   projects?: { id: string; user_id: string; excluded_terms?: unknown }[];
@@ -54,6 +55,7 @@ function createActionClient({
   entityLinks?: { id: string; from_id: string; to_id?: string; [key: string]: unknown }[];
   foreshadows?: { id: string; project_id: string; [key: string]: unknown }[];
   suggestions?: { id: string; project_id: string; [key: string]: unknown }[];
+  selectErrors?: Record<string, string>;
 }) {
   const operations: QueryOperation[] = [];
 
@@ -98,9 +100,17 @@ function createActionClient({
     return rowsForTable(operation)[0];
   };
 
+  const errorForTable = (table: string) => {
+    const message = selectErrors[table];
+    return message ? { message } : null;
+  };
+
   const resultForOperation = (operation: QueryOperation) => {
     if (operation.type === "select") {
-      return { data: rowsForTable(operation), error: null };
+      return {
+        data: errorForTable(operation.table) ? null : rowsForTable(operation),
+        error: errorForTable(operation.table),
+      };
     }
     return { data: null, error: null };
   };
@@ -163,13 +173,22 @@ function createActionClient({
           return builder;
         },
         async maybeSingle() {
-          return { data: findRow(operation) ?? null, error: null };
+          return {
+            data: errorForTable(operation.table) ? null : findRow(operation) ?? null,
+            error: errorForTable(operation.table),
+          };
         },
         async single() {
-          return { data: findRow(operation) ?? null, error: null };
+          return {
+            data: errorForTable(operation.table) ? null : findRow(operation) ?? null,
+            error: errorForTable(operation.table),
+          };
         },
         then(
-          resolve: (value: { data: unknown; error: null }) => unknown,
+          resolve: (value: {
+            data: unknown;
+            error: { message: string } | null;
+          }) => unknown,
           reject?: (reason: unknown) => unknown
         ) {
           return Promise.resolve(resultForOperation(operation)).then(resolve, reject);
@@ -224,6 +243,19 @@ describe("project server action ownership boundaries", () => {
       )
     ).toEqual([]);
     expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed inline updates before creating a database client", async () => {
+    const { updateEntityInline } = await import(
+      "@/app/(dashboard)/projects/[id]/codex-actions"
+    );
+
+    const result = await updateEntityInline(entityId, projectId, {
+      type: "NOT_AN_ENTITY_TYPE",
+    });
+
+    expect(result.error).toBe("지원하지 않는 항목 유형입니다");
+    expect(createClientMock).not.toHaveBeenCalled();
   });
 
   it("does not delete an entity when the entity belongs to another project", async () => {
@@ -283,6 +315,26 @@ describe("project server action ownership boundaries", () => {
     expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 
+  it("rejects malformed relationship forms before creating a database client", async () => {
+    const { createEntityLink } = await import(
+      "@/app/(dashboard)/projects/[id]/codex-actions"
+    );
+
+    const result = await createEntityLink(
+      projectFormData({
+        projectId,
+        fromId: entityId,
+        toId: otherEntityId,
+        relationType: "NOT_A_RELATION",
+        direction: "UNI",
+        weight: "0.5",
+      })
+    );
+
+    expect(result.error).toBe("지원하지 않는 관계 유형입니다");
+    expect(createClientMock).not.toHaveBeenCalled();
+  });
+
   it("does not update an entity link when the linked entity belongs to another project", async () => {
     const { client, operations } = createActionClient({
       projects: [{ id: projectId, user_id: "user-a" }],
@@ -319,6 +371,32 @@ describe("project server action ownership boundaries", () => {
     const result = await deleteEntityLink(linkId, projectId, entityId);
 
     expect(result).toEqual({ error: "권한이 없습니다" });
+    expect(
+      operations.filter(
+        (operation) => operation.table === "entity_links" && operation.type === "delete"
+      )
+    ).toEqual([]);
+    expect(revalidatePathMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves endpoint query errors when deleting a link by relation", async () => {
+    const { client, operations } = createActionClient({
+      projects: [{ id: projectId, user_id: "user-a" }],
+      selectErrors: { entities: "endpoint query failed" },
+    });
+    createClientMock.mockResolvedValue(client);
+
+    const { deleteEntityLinkByRelation } = await import(
+      "@/app/(dashboard)/projects/[id]/codex-actions"
+    );
+    const result = await deleteEntityLinkByRelation(
+      entityId,
+      otherEntityId,
+      "ALLY",
+      projectId,
+    );
+
+    expect(result).toEqual({ error: "endpoint query failed" });
     expect(
       operations.filter(
         (operation) => operation.table === "entity_links" && operation.type === "delete"

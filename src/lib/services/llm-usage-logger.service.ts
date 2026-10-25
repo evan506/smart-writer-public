@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@/types/database.types";
+import { LLMBudgetError } from "./llm-budget.service";
 import type { LLMUsageCallback, LLMUsageMetadata } from "./llm.service";
 
 export type LLMUsageFeature =
@@ -79,13 +80,26 @@ export function buildLLMUsageLogInsert(
 
 export function createLLMUsageLogger(
   supabase: SupabaseClient<Database>,
-  context: LLMUsageLogContext
+  context: LLMUsageLogContext,
+  options: { onFailure?: () => void; failOnError?: boolean } = {}
 ): LLMUsageCallback {
   return async (metadata) => {
     const payload = buildLLMUsageLogInsert(context, metadata);
-    const { error } = await supabase.from("llm_usage_logs").insert(payload);
-    if (error) {
-      console.error("[LLMUsageLogger] insert failed:", error.message);
+    let insertError: unknown;
+    try {
+      const { error } = await supabase.from("llm_usage_logs").insert(payload);
+      insertError = error;
+    } catch (error) {
+      options.onFailure?.();
+      if (options.failOnError) throw new LLMBudgetError("unavailable");
+      throw error;
+    }
+    if (insertError) {
+      options.onFailure?.();
+      console.error("[LLMUsageLogger] insert failed:",
+        typeof insertError === "object" && "message" in insertError
+          ? insertError.message : insertError);
+      if (options.failOnError) throw new LLMBudgetError("unavailable");
     }
   };
 }

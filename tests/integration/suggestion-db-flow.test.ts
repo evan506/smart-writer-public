@@ -117,10 +117,14 @@ describeIntegration("suggestion DB flow", ({ supabase }) => {
         relationSuggestionFactory(projectId, chapterId, "리엔", "없는 인물", {
           name: "리엔-없는 인물-관계",
         }),
+        relationSuggestionFactory(projectId, chapterId, "리엔", "검은 서고", {
+          name: "관계 유형 누락",
+          aliases: { from_name: "리엔", to_name: "검은 서고" },
+        }),
       ])
       .select("id, aliases");
     expect(suggestionError).toBeNull();
-    expect(suggestions).toHaveLength(2);
+    expect(suggestions).toHaveLength(3);
 
     const plan = buildRelationBatchConfirmationPlan(
       suggestions ?? [],
@@ -129,6 +133,12 @@ describeIntegration("suggestion DB flow", ({ supabase }) => {
 
     expect(plan.confirmedIds).toHaveLength(1);
     expect(plan.dismissedIds).toHaveLength(1);
+    const unresolvedId = suggestions!.find(
+      (suggestion) =>
+        (suggestion.aliases as { to_name?: string })?.to_name === "없는 인물"
+    )!.id;
+    expect(plan.confirmedIds).not.toContain(unresolvedId);
+    expect(plan.dismissedIds).not.toContain(unresolvedId);
 
     const firstUpsert = await supabase
       .from("entity_links")
@@ -171,7 +181,9 @@ describeIntegration("suggestion DB flow", ({ supabase }) => {
     expect(statuses?.map((row) => row.status).sort()).toEqual([
       "CONFIRMED",
       "DISMISSED",
+      "PENDING",
     ]);
+    expect(statuses?.find((row) => row.id === unresolvedId)?.status).toBe("PENDING");
   });
 
   it("rejects invalid entity_link weights at the database boundary", async () => {

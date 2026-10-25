@@ -8,8 +8,8 @@ import {
 
 describe("suggestion-review-utils", () => {
   const suggestions = [
-    { id: "new-1", name: "리켈", suggested_action: "CREATE" },
-    { id: "alias-1", name: "리켈", suggested_action: "MERGE" },
+    { id: "new-1", name: "세란", suggested_action: "CREATE" },
+    { id: "alias-1", name: "세란", suggested_action: "MERGE" },
     { id: "update-1", name: "검은 서고", suggested_action: "UPDATE" },
     { id: "legacy-1", name: "푸른 문" },
   ];
@@ -29,6 +29,6 @@ describe("suggestion-review-utils", () => {
   });
 
   it("does not confirm same-name MERGE suggestions when a new entity is inserted", () => {
-    expect(getConfirmableSuggestionIdsByName(suggestions, "리켈")).toEqual(["new-1"]);
+    expect(getConfirmableSuggestionIdsByName(suggestions, "세란")).toEqual(["new-1"]);
   });
 });

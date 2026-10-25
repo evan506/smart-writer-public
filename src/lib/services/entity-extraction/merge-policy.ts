@@ -1,9 +1,5 @@
 import { normalizeEntityName } from "../text-normalize";
 
-export function canAutoMergeSubstringEntities(entityType: string): boolean {
-  return entityType === "CHARACTER";
-}
-
 export function shouldAutoMergeCharacterSubstring(
   shorterName: string,
   longerName: string
@@ -12,8 +8,7 @@ export function shouldAutoMergeCharacterSubstring(
   const longer = normalizeEntityName(longerName);
   if (!shorter || !longer || shorter === longer) return false;
 
-  // Keep this conservative: prefix abbreviations such as "리엔" →
-  // "리엔 하르트" are safe enough to merge automatically, but title +
-  // name expressions such as "강철주먹 카일" should remain author-reviewed.
+  // Used only to distinguish prefix names from same-batch title aliases.
+  // Matching this pattern never permits canon writes or automatic merging.
   return longer.startsWith(shorter);
 }

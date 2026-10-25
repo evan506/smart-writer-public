@@ -6,13 +6,13 @@ import {
 } from "@/lib/services/extraction-eval/scoring";
 
 const scenario = {
-  shouldExtract: ["카이", "리엔 하르트", "변방 마을"],
+  shouldExtract: ["리겔", "리엔 하르트", "변방 마을"],
   shouldNotExtract: ["무명 병사", "지나가던 상인"],
 };
 
 describe("scoreScenario", () => {
   it("scores a perfect extraction at 100", () => {
-    const s = scoreScenario(scenario, ["카이", "리엔 하르트", "변방 마을"]);
+    const s = scoreScenario(scenario, ["리겔", "리엔 하르트", "변방 마을"]);
     expect(s.score).toBe(100);
     expect(s.precision).toBe(1);
     expect(s.recall).toBe(1);
@@ -23,13 +23,13 @@ describe("scoreScenario", () => {
   it("penalizes a dismissed name (false positive) more than a miss", () => {
     // One false positive (surfaced a dismissed name).
     const withFp = scoreScenario(scenario, [
-      "카이",
+      "리겔",
       "리엔 하르트",
       "변방 마을",
       "무명 병사",
     ]);
     // One false negative (missed a confirmed name).
-    const withFn = scoreScenario(scenario, ["카이", "리엔 하르트"]);
+    const withFn = scoreScenario(scenario, ["리겔", "리엔 하르트"]);
 
     expect(withFp.fp).toBe(1);
     expect(withFn.fn).toBe(1);
@@ -39,13 +39,13 @@ describe("scoreScenario", () => {
 
   it("makes 'extract everything' a losing strategy", () => {
     const everything = scoreScenario(scenario, [
-      "카이",
+      "리겔",
       "리엔 하르트",
       "변방 마을",
       "무명 병사",
       "지나가던 상인",
     ]);
-    const careful = scoreScenario(scenario, ["카이", "리엔 하르트", "변방 마을"]);
+    const careful = scoreScenario(scenario, ["리겔", "리엔 하르트", "변방 마을"]);
     // Grabbing both dismissed names tanks precision below the careful extractor.
     expect(everything.precision).toBeLessThan(careful.precision);
     expect(everything.score).toBeLessThan(careful.score);
@@ -54,7 +54,7 @@ describe("scoreScenario", () => {
 
   it("ignores unlabeled names (neither confirmed nor dismissed)", () => {
     const s = scoreScenario(scenario, [
-      "카이",
+      "리겔",
       "리엔 하르트",
       "변방 마을",
       "정체불명 신규 이름",
@@ -67,8 +67,8 @@ describe("scoreScenario", () => {
 
   it("normalizes names before matching", () => {
     const s = scoreScenario(
-      { shouldExtract: ["카이!"], shouldNotExtract: [] },
-      ["  카이  "]
+      { shouldExtract: ["리겔!"], shouldNotExtract: [] },
+      ["  리겔  "]
     );
     expect(s.tp).toBe(1);
     expect(s.score).toBe(100);
@@ -90,7 +90,7 @@ describe("scoreScenario", () => {
 
 describe("normalizeName", () => {
   it("lowercases, NFKC-normalizes, and strips punctuation/space", () => {
-    expect(normalizeName("  카이! ")).toBe("카이");
+    expect(normalizeName("  리겔! ")).toBe("리겔");
     expect(normalizeName("Dino Silverud")).toBe("dinosilverud");
   });
 });

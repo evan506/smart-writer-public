@@ -26,12 +26,10 @@ function loadEnv() {
 function readChapterSet(folder: "lastplayer" | "blackiron", count: number) {
   return Array.from({ length: count }, (_, index) => {
     const chapterNum = index + 1;
-    const content = readFileSync(
-      resolve(process.cwd(), `references/test-data/${folder}/ch${chapterNum}.md`),
-      "utf-8"
-    )
-      .replace(/^\uFEFF/, "")
-      .trim();
+    const sample = JSON.parse(readFileSync(
+      resolve(process.cwd(), `tests/fixtures/search/${folder}-seed-source.json`), "utf-8"
+    )) as { chapters: Array<{ content: string }> };
+    const content = sample.chapters[index % sample.chapters.length].content;
     return {
       chapter_num: chapterNum,
       title: `제${chapterNum}화`,
@@ -145,7 +143,7 @@ async function main() {
           name: entity.name,
           type: entity.type,
           summary: entity.summary,
-          aliases: entity.aliases,
+          aliases: [...entity.aliases],
           metadata: { importance: "MAIN" },
         }))
       )
@@ -174,7 +172,7 @@ async function main() {
           name: suggestion.name,
           type: suggestion.type,
           summary: suggestion.summary,
-          aliases: suggestion.aliases,
+          aliases: [...suggestion.aliases],
           confidence: 0.72,
           context_snippet: `${suggestion.name} 관련 테스트 제안`,
           status: "PENDING",

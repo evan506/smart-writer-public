@@ -256,10 +256,6 @@ export const RELATION_TYPE_LABELS = Object.fromEntries(
   RELATION_TYPES.map((type) => [type, RELATION_SCHEMA[type].label])
 ) as Record<string, string>;
 
-export const AUTO_REGISTER_RELATION_TYPES = new Set(
-  RELATION_TYPES.filter((type) => RELATION_SCHEMA[type].autoRegister)
-) as Set<string>;
-
 export function renderRelationPromptSpec(): string {
   return RELATION_TYPES.map((type) => {
     const entry = RELATION_SCHEMA[type];

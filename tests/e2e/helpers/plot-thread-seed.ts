@@ -54,12 +54,11 @@ export interface PlotThreadSeed {
 
 const PASSWORD = "SmartWriter-v33-e2e-1234!";
 
-// Real lines from references/test-data/blackiron (fixtures are canonical). These are
-// reused as the seeded evidence excerpts so the inspector shows authentic text.
-const EXCERPT_CH2 = "미라가 경악한 눈으로 바라보자 리엔은 당황했다.";
-const EXCERPT_CH3 = "테오를 집에 들여도 리엔의 일상은 변함이 없었다.";
-const FACT_VALUE = "끝없는 마족 침공에 지쳐 있다";
-const FACT_EXCERPT_CH3 = "끝도 없는 마족의 침공은 리엔을 지치게 만들었다.";
+// Original synthetic evidence for the public E2E fixture; no private manuscript input.
+const EXCERPT_CH2 = "미라는 관측소의 새 지도를 펼쳤고 리엔은 다음 순찰로를 표시했다.";
+const EXCERPT_CH3 = "테오는 성문에서 신호등을 점검하고 리엔에게 결과를 보고했다.";
+const FACT_VALUE = "순찰 준비로 바쁜 상태다";
+const FACT_EXCERPT_CH3 = "리엔은 내일 순찰을 준비하느라 창고 목록을 다시 확인했다.";
 
 /** Manual `.env.local` loader (no dotenv dependency) — mirrors scripts/e2e-seed.ts. */
 export function loadEnvLocal() {
@@ -92,12 +91,12 @@ function service(env: PlotThreadE2EEnv): SupabaseClient<Database> {
 }
 
 function readBlackironChapter(num: number): string {
-  return readFileSync(
-    resolve(process.cwd(), `references/test-data/blackiron/ch${num}.md`),
-    "utf-8"
-  )
-    .replace(/^﻿/, "")
-    .trim();
+  const sample = JSON.parse(readFileSync(
+    resolve(process.cwd(), "tests/fixtures/search/blackiron-seed-source.json"), "utf-8"
+  )) as { chapters: Array<{ content: string }> };
+  const body = sample.chapters[(num - 1) % sample.chapters.length].content;
+  const evidence = num === 2 ? EXCERPT_CH2 : num === 3 ? `${EXCERPT_CH3} ${FACT_EXCERPT_CH3}` : "";
+  return `${body}\n${evidence}`;
 }
 
 export async function seedPlotThreadE2E(
@@ -132,7 +131,7 @@ export async function seedPlotThreadE2E(
   if (projectError) throw projectError;
   const projectId = project.id;
 
-  // 3) four adjacent blackiron chapters (canonical bodies)
+  // 3) four adjacent blackiron chapters (synthetic bodies)
   const chapterRows = [1, 2, 3, 4].map((num) => {
     const content = readBlackironChapter(num);
     return {

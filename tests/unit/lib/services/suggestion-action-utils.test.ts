@@ -141,7 +141,7 @@ describe("suggestion-action-utils", () => {
     );
 
     expect(plan.confirmedIds).toEqual(["relation-1", "relation-defaults"]);
-    expect(plan.dismissedIds).toEqual(["missing-endpoint", "missing-type"]);
+    expect(plan.dismissedIds).toEqual(["missing-type"]);
     expect(plan.linkInserts).toEqual([
       {
         from_id: "entity-1",

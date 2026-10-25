@@ -2,7 +2,7 @@
 -- BASELINE — remote schema snapshot (Smart Writer)  [MATERIALIZED]
 -- ============================================================================
 -- Strategy (confirmed 2026-05-15): SQUASH BASELINE.
--- The remote Supabase DB (project REDACTED-SUPABASE-PROJECT-REF) is the source of truth.
+-- The remote Supabase DB (project jxcargpzpifpmwtpjhmd) is the source of truth.
 -- Its migration history has 29 entries that were applied via dashboard/CLI and
 -- were NEVER committed as SQL to this repo. Reconstructing them individually is
 -- not worthwhile. This file is the single squash-baseline capturing the FULL

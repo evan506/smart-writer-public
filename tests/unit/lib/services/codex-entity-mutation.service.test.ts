@@ -9,6 +9,11 @@ import {
 const afterMock = vi.hoisted(() => vi.fn());
 const createClientMock = vi.hoisted(() => vi.fn());
 const embedTextMock = vi.hoisted(() => vi.fn());
+const budgetedOptionsMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/services/budgeted-embedding", () => ({
+  createBudgetedEmbeddingOptions: budgetedOptionsMock,
+}));
 
 vi.mock("next/server", () => ({
   after: afterMock,
@@ -41,16 +46,26 @@ function createMutationClient({
   updateError = null,
   deleteErrors = {},
   project = { excluded_terms: ["기존"] },
+  rpcResults = {},
 }: {
   insertedEntity?: { id: string };
   insertError?: { message: string } | null;
   updateError?: { message: string } | null;
   deleteErrors?: Partial<Record<"entity_links" | "mentions" | "entities", { message: string }>>;
   project?: { excluded_terms: unknown } | null;
+  rpcResults?: Record<
+    string,
+    { data: unknown; error: { message: string } | null }
+  >;
 } = {}) {
   const operations: QueryOperation[] = [];
+  const rpcCalls: { name: string; args: unknown }[] = [];
 
   const client = {
+    async rpc(name: string, args: unknown) {
+      rpcCalls.push({ name, args });
+      return rpcResults[name] ?? { data: null, error: null };
+    },
     from(table: string) {
       const operation: QueryOperation = { table, eq: [] };
       operations.push(operation);
@@ -109,7 +124,7 @@ function createMutationClient({
     },
   };
 
-  return { client, operations };
+  return { client, operations, rpcCalls };
 }
 
 function createMergeClient({
@@ -157,17 +172,34 @@ function createMergeClient({
   foreshadows = [
     { id: "foreshadow-1", entity_ids: ["source-entity", "other-entity"] },
   ],
+  rpcResult = {
+    data: [
+      {
+        source_name: "엘프왕",
+        target_name: "엘프들의 왕",
+        target_summary: "엘프들의 지도자",
+        target_aliases: ["엘프 군주", "엘프왕", "왕"],
+      },
+    ],
+    error: null,
+  },
 }: {
   sourceEntity?: Record<string, unknown> | null;
   targetEntity?: Record<string, unknown> | null;
   sourceFacts?: Record<string, unknown>[];
   targetFacts?: Record<string, unknown>[];
   foreshadows?: Record<string, unknown>[];
+  rpcResult?: { data: unknown; error: { message: string } | null };
 } = {}) {
   const operations: QueryOperation[] = [];
+  const rpcCalls: { name: string; args: unknown }[] = [];
   const entitySingles = [sourceEntity, targetEntity];
 
   const client = {
+    async rpc(name: string, args: unknown) {
+      rpcCalls.push({ name, args });
+      return rpcResult;
+    },
     from(table: string) {
       const operation: QueryOperation = { table, eq: [] };
       operations.push(operation);
@@ -223,12 +255,13 @@ function createMergeClient({
     },
   };
 
-  return { client, operations };
+  return { client, operations, rpcCalls };
 }
 
 describe("codex entity mutation service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    budgetedOptionsMock.mockReset().mockReturnValue({ onComplete: vi.fn() });
     embedTextMock.mockResolvedValue([0.1, 0.2, 0.3]);
   });
 
@@ -330,8 +363,15 @@ describe("codex entity mutation service", () => {
     expect(afterMock).toHaveBeenCalledTimes(1);
   });
 
-  it("deletes entity dependents and optionally adds the name to excluded terms", async () => {
-    const { client, operations } = createMutationClient();
+  it("deletes an entity through one atomic RPC", async () => {
+    const { client, operations, rpcCalls } = createMutationClient({
+      rpcResults: {
+        delete_codex_entity: {
+          data: [{ entity_name: "리엔", excluded_term_added: true }],
+          error: null,
+        },
+      },
+    });
 
     const result = await deleteCodexEntity(
       client as unknown as Parameters<typeof deleteCodexEntity>[0],
@@ -344,41 +384,26 @@ describe("codex entity mutation service", () => {
     );
 
     expect(result).toEqual({ error: null });
-    expect(operations).toContainEqual(
-      expect.objectContaining({
-        table: "entity_links",
-        type: "delete",
-        or: "from_id.eq.entity-1,to_id.eq.entity-1",
-      })
-    );
-    expect(operations).toContainEqual(
-      expect.objectContaining({
-        table: "mentions",
-        type: "delete",
-        eq: [{ column: "entity_id", value: "entity-1" }],
-      })
-    );
-    expect(operations).toContainEqual(
-      expect.objectContaining({
-        table: "entities",
-        type: "delete",
-        eq: [{ column: "id", value: "entity-1" }],
-      })
-    );
-    expect(operations).toContainEqual(
-      expect.objectContaining({
-        table: "projects",
-        type: "update",
-        payload: { excluded_terms: ["기존", "리엔"] },
-        eq: [{ column: "id", value: "project-1" }],
-      })
-    );
+    expect(rpcCalls).toEqual([
+      {
+        name: "delete_codex_entity",
+        args: {
+          p_project_id: "project-1",
+          p_entity_id: "entity-1",
+          p_block_term: true,
+        },
+      },
+    ]);
+    expect(operations).toEqual([]);
   });
 
-  it("stops delete cascade on relation delete failure", async () => {
+  it("returns an atomic delete RPC error without extra mutations", async () => {
     const { client, operations } = createMutationClient({
-      deleteErrors: {
-        entity_links: { message: "link failed" },
+      rpcResults: {
+        delete_codex_entity: {
+          data: null,
+          error: { message: "delete rolled back" },
+        },
       },
     });
 
@@ -391,12 +416,12 @@ describe("codex entity mutation service", () => {
           entityName: "리엔",
         }
       )
-    ).resolves.toEqual({ error: "관계 삭제 실패: link failed" });
-    expect(operations.map((operation) => operation.table)).toEqual(["entity_links"]);
+    ).resolves.toEqual({ error: "delete rolled back" });
+    expect(operations).toEqual([]);
   });
 
-  it("merges an approved entity into a target alias and moves dependents", async () => {
-    const { client, operations } = createMergeClient();
+  it("merges entities through one atomic RPC and refreshes the target embedding", async () => {
+    const { client, operations, rpcCalls } = createMergeClient();
     const background = createMutationClient();
     createClientMock.mockResolvedValue(background.client);
 
@@ -414,69 +439,28 @@ describe("codex entity mutation service", () => {
       sourceName: "엘프왕",
       targetName: "엘프들의 왕",
     });
-    expect(operations).toContainEqual(
-      expect.objectContaining({
-        table: "entities",
-        type: "update",
-        payload: { aliases: ["엘프 군주", "엘프왕", "왕"] },
-        eq: [{ column: "id", value: "target-entity" }],
-      })
-    );
-    expect(operations).toContainEqual(
-      expect.objectContaining({
-        table: "entity_suggestions",
-        type: "update",
-        payload: { matched_entity_id: "target-entity" },
-        eq: [
-          { column: "project_id", value: "project-1" },
-          { column: "matched_entity_id", value: "source-entity" },
-        ],
-      })
-    );
-    expect(operations).toContainEqual(
-      expect.objectContaining({
-        table: "mentions",
-        type: "update",
-        payload: { entity_id: "target-entity" },
-        eq: [{ column: "entity_id", value: "source-entity" }],
-      })
-    );
-    expect(operations).toContainEqual(
-      expect.objectContaining({
-        table: "canon_fact_sources",
-        type: "update",
-        payload: { fact_id: "target-fact-duplicate" },
-        eq: [{ column: "fact_id", value: "source-fact-duplicate" }],
-      })
-    );
-    expect(operations).toContainEqual(
-      expect.objectContaining({
-        table: "canon_facts",
-        type: "update",
-        payload: { entity_id: "target-entity" },
-        eq: [{ column: "id", value: "source-fact-new" }],
-      })
-    );
-    expect(operations).toContainEqual(
-      expect.objectContaining({
-        table: "foreshadows",
-        type: "update",
-        payload: { entity_ids: ["target-entity", "other-entity"] },
-        eq: [{ column: "id", value: "foreshadow-1" }],
-      })
-    );
-    expect(operations).toContainEqual(
-      expect.objectContaining({
-        table: "entities",
-        type: "delete",
-        eq: [{ column: "id", value: "source-entity" }],
-      })
-    );
+    expect(rpcCalls).toEqual([
+      {
+        name: "merge_codex_entity_as_alias",
+        args: {
+          p_project_id: "project-1",
+          p_source_entity_id: "source-entity",
+          p_target_entity_id: "target-entity",
+        },
+      },
+    ]);
+    expect(operations).toEqual([]);
     expect(afterMock).toHaveBeenCalledTimes(1);
+
+    await afterMock.mock.calls[0][0]();
+    expect(embedTextMock).toHaveBeenCalledWith(
+      "엘프들의 왕 엘프들의 지도자 엘프 군주 엘프왕 왕",
+      expect.anything()
+    );
   });
 
   it("rejects merging an entity into itself", async () => {
-    const { client, operations } = createMergeClient();
+    const { client, operations, rpcCalls } = createMergeClient();
 
     await expect(
       mergeCodexEntityAsAlias(
@@ -489,5 +473,22 @@ describe("codex entity mutation service", () => {
       )
     ).resolves.toEqual({ error: "같은 항목으로는 합칠 수 없습니다" });
     expect(operations).toEqual([]);
+    expect(rpcCalls).toEqual([]);
+  });
+  it("preserves manual confirmation and forwards owner when optional embedding is blocked", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      budgetedOptionsMock.mockImplementation(() => { throw new Error("budget blocked"); });
+      const { client } = createMutationClient();
+const bg = createMutationClient();
+createClientMock.mockResolvedValue(bg.client);
+const result = await createCodexEntity(client as never, { projectId: "project-1", userId: "owner-1", name: "리엔", type: "CHARACTER", summary: null, aliases: [] });
+      expect(result.error).toBeNull();
+      await expect(afterMock.mock.calls[0][0]()).resolves.toBeUndefined();
+      expect(budgetedOptionsMock).toHaveBeenCalledTimes(1);
+      expect(budgetedOptionsMock).toHaveBeenCalledWith(bg.client, expect.objectContaining({ projectId: "project-1", userId: "owner-1" }));
+      expect(embedTextMock).not.toHaveBeenCalled();
+      expect(bg.operations).toHaveLength(0);
+    } finally { log.mockRestore(); }
   });
 });

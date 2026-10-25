@@ -1,6 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
+
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", interactiveWidget: "resizes-content" };
 
 export const metadata: Metadata = {
   title: "Smart Writer — 웹소설 작가 보조 도구",

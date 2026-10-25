@@ -23,10 +23,16 @@ export async function runEval(input: {
   startedAt: string;
   gitSha?: string;
   beta?: number;
+  /** Opt-in bounded eval; legacy callers keep continue-on-error semantics. */
+  shouldStop?: () => string | undefined;
+  stopOnFailure?: boolean;
 }): Promise<EvalRun> {
   const results: ScenarioResult[] = [];
 
+  let stopReason: string | undefined;
   for (const scenario of input.scenarios) {
+    stopReason = input.shouldStop?.();
+    if (stopReason) break;
     let extracted: Awaited<ReturnType<EvalExtractor>>;
     try {
       extracted = await input.extract(scenario.chapterText);
@@ -37,11 +43,13 @@ export async function runEval(input: {
           err instanceof Error ? err.message : "extraction threw"
         )
       );
+      if (input.stopOnFailure) { stopReason = results.at(-1)?.error || "extraction failed"; break; }
       continue;
     }
 
     if (extracted.environmentFailure) {
       results.push(environmentFailureResult(scenario.id, extracted.error));
+      if (input.stopOnFailure) { stopReason = extracted.error || "extraction failed"; break; }
       continue;
     }
 
@@ -55,6 +63,11 @@ export async function runEval(input: {
     gitSha: input.gitSha,
     tier: input.tier,
     results,
+    ...((input.shouldStop || input.stopOnFailure) ? {
+      status: (stopReason ? "aborted" : "completed") as "aborted" | "completed",
+      stopReason,
+      unexecutedScenarioIds: input.scenarios.slice(results.length).map((s) => s.id),
+    } : {}),
     aggregate: computeAggregate(results),
   };
 }

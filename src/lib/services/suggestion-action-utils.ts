@@ -1,3 +1,4 @@
+import { findKnownEntityIdByName } from "./entity-extraction/suggestion-builder";
 import {
   getConfirmableSuggestionIdsByName,
   getConfirmableSuggestions,
@@ -28,6 +29,7 @@ export type RelationBatchSuggestion = {
 export type RelationEndpoint = {
   id: string;
   name: string;
+  aliases?: unknown;
 };
 
 export type SuggestionBatchCandidate = {
@@ -134,7 +136,6 @@ export function buildRelationBatchConfirmationPlan(
   suggestions: RelationBatchSuggestion[],
   entities: RelationEndpoint[]
 ) {
-  const nameToId = new Map(entities.map((entity) => [entity.name, entity.id]));
   const linkInserts: {
     from_id: string;
     to_id: string;
@@ -154,12 +155,15 @@ export function buildRelationBatchConfirmationPlan(
       weight?: number;
     } | null;
 
-    const fromId = meta?.from_name ? nameToId.get(meta.from_name) : null;
-    const toId = meta?.to_name ? nameToId.get(meta.to_name) : null;
-    if (!meta?.relation_type || !fromId || !toId) {
+    if (!meta?.from_name || !meta.to_name || !meta.relation_type) {
       dismissedIds.push(suggestion.id);
       continue;
     }
+    const fromId = findKnownEntityIdByName(entities, meta.from_name);
+    const toId = findKnownEntityIdByName(entities, meta.to_name);
+    // New entity candidates remain pending until writer approval. Their
+    // relations must stay reviewable if a batch is approved before endpoints.
+    if (!fromId || !toId) continue;
 
     linkInserts.push({
       from_id: fromId,

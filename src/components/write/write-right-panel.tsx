@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Activity, useState } from "react";
 import { ChevronRight, Loader2 } from "lucide-react";
 import { CanonQAPanel } from "@/components/canon-qa-panel";
 import { EntitySuggestionPanel } from "@/components/entity-suggestion-panel";
@@ -66,19 +66,19 @@ export function WriteRightPanel({
 
   return (
     <div
-      className="flex h-full w-[320px] shrink-0 flex-col overflow-hidden"
+      className="flex h-full min-h-0 w-full shrink-0 flex-col overflow-hidden"
       style={{ background: "var(--sw-bg-surface)" }}
     >
       {/* Tab bar with close toggle */}
       <div
-        className="flex shrink-0 items-center px-1"
+        className="hidden shrink-0 items-center px-1 lg:flex"
         style={{ borderBottom: "1px solid var(--sw-border-default)" }}
       >
         {/* Close toggle — same height as collapsed state */}
         <button
           onClick={onClose}
           aria-label="패널 접기"
-          className="flex size-7 shrink-0 items-center justify-center rounded transition-colors hover:bg-sw-bg-hover"
+          className="flex size-11 md:size-7 shrink-0 items-center justify-center rounded transition-colors hover:bg-sw-bg-hover"
           style={{ color: "var(--sw-text-muted)" }}
           title="패널 접기"
         >
@@ -91,7 +91,7 @@ export function WriteRightPanel({
             <button
               key={tab.id}
               onClick={() => handleTabChange(tab.id)}
-              className="relative flex-1 py-2.5 text-center text-xs font-medium transition-colors"
+              className="relative min-h-11 flex-1 py-2.5 text-center text-xs font-medium transition-colors"
               style={{
                 color: isActive ? "var(--sw-accent)" : "var(--sw-text-muted)",
                 borderBottom: `2px solid ${isActive ? "var(--sw-accent)" : "transparent"}`,
@@ -121,8 +121,8 @@ export function WriteRightPanel({
       </div>
 
       {/* Tab content */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {currentTab === "codex" && (
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <Activity mode={currentTab === "codex" ? "visible" : "hidden"}>
           <div className="flex-1 overflow-hidden p-2.5">
             <CodexPanel
               projectId={projectId}
@@ -132,9 +132,9 @@ export function WriteRightPanel({
               onSelectChapter={onSelectChapter}
             />
           </div>
-        )}
+        </Activity>
 
-        {currentTab === "qa" && (
+        <Activity mode={currentTab === "qa" ? "visible" : "hidden"}>
           <div
             className="flex-1 overflow-y-auto px-2.5 py-2 sw-scrollbar-surface"
             style={{
@@ -144,9 +144,9 @@ export function WriteRightPanel({
           >
             <CanonQAPanel projectId={projectId} variant="panel" />
           </div>
-        )}
+        </Activity>
 
-        {currentTab === "suggestions" && (
+        <Activity mode={currentTab === "suggestions" ? "visible" : "hidden"}>
           <div
             className="flex-1 overflow-y-auto px-2.5 py-2 sw-scrollbar-surface"
             style={{
@@ -163,7 +163,7 @@ export function WriteRightPanel({
               onMemoryChange={onMemoryChange}
             />
           </div>
-        )}
+        </Activity>
       </div>
     </div>
   );

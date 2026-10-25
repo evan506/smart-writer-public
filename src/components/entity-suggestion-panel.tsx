@@ -11,6 +11,7 @@ import { BatchToolbar } from "./entity-suggestion-panel/batch-toolbar";
 import { ConfirmAllModal } from "./entity-suggestion-panel/confirm-all-modal";
 import { ResultSummary } from "./entity-suggestion-panel/result-summary";
 import {
+  AnalysisDelayedState,
   AnalysisFailedState,
   AnalyzingState,
   EmptyState,
@@ -44,6 +45,11 @@ export function EntitySuggestionPanel({
   const [suggestions, setSuggestions] = useState<EntitySuggestion[]>([]);
   const [factSuggestions, setFactSuggestions] = useState<FactSuggestionView[]>([]);
   const factCountRef = useRef(0);
+  const projectGenerationRef = useRef(0);
+  useEffect(() => {
+    const generation = ++projectGenerationRef.current;
+    return () => { projectGenerationRef.current = generation + 1; };
+  }, [projectId]);
   const [aliasTargets, setAliasTargets] = useState<AliasTarget[]>([]);
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -66,16 +72,18 @@ export function EntitySuggestionPanel({
   };
 
   const refreshAliasTargets = useCallback(async () => {
+    const generation = projectGenerationRef.current;
     const result = await getSuggestionAliasTargets(projectId);
-    if (!result.error) {
+    if (generation === projectGenerationRef.current && !result.error) {
       setAliasTargets(result.entities);
     }
   }, [projectId]);
 
   const refreshFactSuggestions = useCallback(async () => {
+    const generation = projectGenerationRef.current;
     const previousCount = factCountRef.current;
     const result = await getFactSuggestions(projectId);
-    if (result.error) return 0;
+    if (generation !== projectGenerationRef.current || result.error) return 0;
 
     setFactSuggestions(result.suggestions);
     factCountRef.current = result.suggestions.length;
@@ -84,7 +92,7 @@ export function EntitySuggestionPanel({
 
   useEffect(() => {
     onPendingCountChange?.(count + factSuggestions.length);
-  }, [count, factSuggestions.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [count, factSuggestions.length, onPendingCountChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -120,6 +128,7 @@ export function EntitySuggestionPanel({
     autoRegisteredNames,
     analysisCompletedWithoutResults,
     analysisFailed,
+    analysisDelayed,
   } = useSuggestionPolling({
     projectId,
     chapterId,
@@ -184,6 +193,10 @@ export function EntitySuggestionPanel({
     return <AnalysisFailedState />;
   }
 
+  if (analysisDelayed && suggestions.length === 0 && factSuggestions.length === 0) {
+    return <AnalysisDelayedState />;
+  }
+
   if (analyzing && suggestions.length === 0 && factSuggestions.length === 0) {
     return <AnalyzingState />;
   }
@@ -219,6 +232,8 @@ export function EntitySuggestionPanel({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+      {analysisFailed && <AnalysisFailedState />}
+      {analysisDelayed && <AnalysisDelayedState />}
       {showConfirmAllModal && (
         <ConfirmAllModal
           confirmAllCount={confirmAllCount}

@@ -13,6 +13,11 @@ const searchChaptersBm25Mock = vi.hoisted(() => vi.fn());
 const matchChunksMock = vi.hoisted(() => vi.fn());
 const findRelatedEntitiesMock = vi.hoisted(() => vi.fn());
 const embedTextMock = vi.hoisted(() => vi.fn());
+const budgetedOptionsMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/services/budgeted-embedding", () => ({
+  createBudgetedEmbeddingOptions: budgetedOptionsMock,
+}));
 
 vi.mock("@/lib/services/search.service", () => ({
   SearchService: vi.fn(function () {
@@ -49,7 +54,7 @@ const BM25_ONLY_QUERY = "리엔 위치";
  * Long query containing a GRAPH_KEYWORDS hit ("관계") and no VECTOR_KEYWORDS
  * hit — classifyQuery routes this to graph mode, selectModes -> [graph, bm25].
  */
-const GRAPH_QUERY = "리엔과 세력의 관계에 대해 자세히 알려주세요";
+const GRAPH_QUERY = "리엔와 세력의 관계에 대해 자세히 알려주세요";
 
 /**
  * Long query with no GRAPH_KEYWORDS or VECTOR_KEYWORDS hits — classifyQuery
@@ -88,6 +93,7 @@ function buildService() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+    budgetedOptionsMock.mockReset().mockReturnValue({ onComplete: vi.fn() });
   searchEntitiesBm25Mock.mockResolvedValue([]);
   searchChaptersBm25Mock.mockResolvedValue([]);
   matchChunksMock.mockResolvedValue([]);
@@ -111,7 +117,7 @@ describe("RAGSearchService.search", () => {
         id: "c1",
         title: "1화",
         chapter_num: 1,
-        content: `${filler}리엔이 위치를 확인했다.${filler}`,
+        content: `${filler}리엔가 위치를 확인했다.${filler}`,
         rank: 0.5,
       }),
     ]);
@@ -125,12 +131,14 @@ describe("RAGSearchService.search", () => {
     expect(entityItem).toBeDefined();
     expect(entityItem?.source).toBe("bm25");
     expect(entityItem?.content).toBe("주인공 리엔의 정보"); // entity content = description
+    expect(entityItem?.metadata).toEqual({ entityType: "CHARACTER", entityIds: ["e1"] });
 
     const chapterItem = result.items.find((i) => i.type === "chapter");
     expect(chapterItem).toBeDefined();
     expect(chapterItem?.source).toBe("bm25");
     expect(chapterItem?.content.length).toBeGreaterThan(0);
     expect(chapterItem?.content).toContain("리엔"); // windowed around the keyword hit
+    expect(chapterItem?.metadata).toEqual({ chapterId: "c1", chapterNum: 1 });
 
     expect(result.classification.mode).toBe("bm25");
     expect(typeof result.classification.confidence).toBe("number");
@@ -175,6 +183,11 @@ describe("RAGSearchService.search", () => {
     const matches = result.items.filter((i) => i.id === "e1");
     expect(matches).toHaveLength(1);
     expect(matches[0].source).toBe("graph"); // graph mode's item wins (pushed first)
+    expect(matches[0].metadata).toEqual({
+      entityType: "CHARACTER",
+      entityIds: ["e1"],
+      relationPath: "seed-1 → e1",
+    });
   });
 
   it("rerank: exact full-query match boost (+0.3) flips a lower-ranked item above a higher-ranked one", async () => {
@@ -273,7 +286,7 @@ describe("RAGSearchService.search", () => {
         id: "chunk-1",
         chapter_id: "ch1",
         content: "청크 내용입니다",
-        entity_tags: null,
+        entity_tags: ["entity-alpha", "entity-beta"],
         position: 2,
         similarity: 0.77,
         summary: null,
@@ -294,11 +307,71 @@ describe("RAGSearchService.search", () => {
     expect(chunkItem?.title).toBe("Chunk #2");
     expect(chunkItem?.content).toBe("청크 내용입니다");
     expect(chunkItem?.score).toBeCloseTo(0.77, 5);
+    expect(chunkItem?.metadata).toEqual({
+      chapterId: "ch1",
+      chunkPosition: 2,
+      entityIds: ["entity-alpha", "entity-beta"],
+      chunkType: "scene",
+    });
+    expect(embedTextMock).toHaveBeenCalledTimes(1);
+    expect(matchChunksMock).toHaveBeenCalledExactlyOnceWith([0.1, 0.2, 0.3], {
+      projectId: PROJECT_ID,
+      matchCount: 15,
+      matchThreshold: 0.3,
+    });
 
     expect(result.classification.mode).toBe("vector");
     expect(typeof result.classification.confidence).toBe("number");
     expect(typeof result.latencyMs).toBe("number");
     expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it.each([
+    {
+      label: "zero position and mixed tag values",
+      row: { chapter_id: "chapter-alpha", position: 0, entity_tags: ["entity-alpha", "", "  ", 3, null, {}, "entity-beta"] },
+      expected: { chapterId: "chapter-alpha", chunkPosition: 0, entityIds: ["entity-alpha", "entity-beta"] },
+    },
+    {
+      label: "missing metadata",
+      row: {},
+      expected: { chapterId: undefined, chunkPosition: undefined, entityIds: undefined },
+    },
+    {
+      label: "null metadata",
+      row: { chapter_id: null, position: null, entity_tags: null },
+      expected: { chapterId: undefined, chunkPosition: undefined, entityIds: undefined },
+    },
+    {
+      label: "object tags",
+      row: { chapter_id: "", entity_tags: { id: "entity-alpha" } },
+      expected: { chapterId: undefined, chunkPosition: undefined, entityIds: undefined },
+    },
+    {
+      label: "string tags",
+      row: { chapter_id: "  ", entity_tags: "entity-alpha" },
+      expected: { chapterId: undefined, chunkPosition: undefined, entityIds: undefined },
+    },
+    {
+      label: "tag array without usable ids",
+      row: { entity_tags: ["", null, 4] },
+      expected: { chapterId: undefined, chunkPosition: undefined, entityIds: undefined },
+    },
+  ])("vector metadata preserves known values without inventing identifiers: $label", async ({ row, expected }) => {
+    matchChunksMock.mockResolvedValue([{
+      id: "chunk-alpha",
+      content: "원문 근거",
+      similarity: 0.7,
+      type: "scene",
+      ...row,
+    }]);
+
+    const result = await buildService().search(PROJECT_ID, VECTOR_QUERY);
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].metadata).toEqual({ chunkType: "scene", ...expected });
+    expect(result.items[0].id).toBe("chunk-alpha");
+    expect(result.items[0].content).toBe("원문 근거");
   });
 
   it("graph seed fallback: empty full-query seed search falls back to per-term search with Korean particles stripped", async () => {
@@ -337,10 +410,26 @@ describe("RAGSearchService.search", () => {
     );
     expect(seedCalls.length).toBeGreaterThan(1);
     expect(seedCalls[0][1]).toBe(GRAPH_QUERY); // first: full query, unstripped
-    expect(seedCalls[1][1]).toBe("리엔"); // second: "리엔은" with the "는" particle stripped
+    expect(seedCalls[1][1]).toBe("리엔"); // second: "리엔는" with the "는" particle stripped
 
     expect(result.items.some((i) => i.id === "rel-1" && i.source === "graph")).toBe(
       true
     );
   });
+});
+
+it("forwards owner to paid vector options and preserves free results when blocked", async () => {
+  budgetedOptionsMock.mockImplementation(() => { throw new Error("budget blocked"); });
+  searchEntitiesBm25Mock.mockResolvedValue([entityRow()]);
+  const result = await buildService().search(PROJECT_ID, VECTOR_QUERY, { userId: "owner-1" });
+  expect(budgetedOptionsMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ projectId: PROJECT_ID, userId: "owner-1" }));
+  expect(embedTextMock).not.toHaveBeenCalled();
+  expect(result.modesUsed).toEqual(["bm25"]);
+  expect(result.items).toHaveLength(1);
+});
+it("free graph and BM25 searches do not build a paid guard", async () => {
+  await buildService().search(PROJECT_ID, BM25_ONLY_QUERY, { userId: "owner-1" });
+  await buildService().search(PROJECT_ID, GRAPH_QUERY, { userId: "owner-1" });
+  expect(budgetedOptionsMock).not.toHaveBeenCalled();
+  expect(embedTextMock).not.toHaveBeenCalled();
 });

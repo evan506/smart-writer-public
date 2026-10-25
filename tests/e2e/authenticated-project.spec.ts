@@ -1,7 +1,4 @@
-import { expect, test } from "@playwright/test";
-import { mkdir, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
+import { expect, test as base, type Page } from "@playwright/test";
 import {
   cleanupAuthenticatedE2E,
   getAuthE2EEnv,
@@ -9,81 +6,82 @@ import {
   type AuthSeed,
 } from "./helpers/auth-seed";
 
-// `test.use({ storageState })` requires a value that's resolvable at module
-// load time (it can't read a fixture or await anything), so this can't be
-// computed inside `beforeAll`. Playwright restarts the worker process (a
-// fresh `process.pid`) on every retry of a failed test -- see
-// https://playwright.dev/docs/test-retries -- so keying the path on
-// `process.pid` here gives every worker attempt, including CI retries, its
-// own storage state file with no cross-worker collisions, while still being
-// a value fixed at module evaluation time.
-const STORAGE_STATE_PATH = path.join(
-  os.tmpdir(),
-  `sw-auth-e2e-${process.pid}.json`
-);
+type AuthSession = {
+  seed: AuthSeed | null;
+  storageState: Awaited<ReturnType<import("@playwright/test").BrowserContext["storageState"]>>;
+};
 
-let seed: AuthSeed | null = null;
+// Worker retries get their own account. Fixture teardown runs even if login or
+// a test fails; seedAuthenticatedE2E also cleans partially created data.
+const test = base.extend<{ seed: AuthSeed | null }, { authSession: AuthSession }>({
+  authSession: [async ({ browser }, runFixture, workerInfo) => {
+    const seed = await seedAuthenticatedE2E();
+    try {
+      if (!seed) {
+        await runFixture({ seed, storageState: { cookies: [], origins: [] } });
+        return;
+      }
+      const context = await browser.newContext({
+        baseURL: workerInfo.project.use.baseURL ?? "http://127.0.0.1:3100",
+      });
+      let storageState: AuthSession["storageState"];
+      try {
+        const page = await context.newPage();
+        await page.goto("/login");
+        await page.getByLabel("이메일").fill(seed.email);
+        await page.getByLabel("비밀번호").fill(seed.password);
+        await page.getByRole("button", { name: "로그인" }).click();
+        await page.waitForURL(/\/projects$/);
+        storageState = await context.storageState();
+      } finally {
+        await context.close();
+      }
+      await runFixture({ seed, storageState });
+    } finally {
+      await cleanupAuthenticatedE2E(seed);
+    }
+  }, { scope: "worker" }],
+  seed: async ({ authSession }, runFixture) => {
+    await runFixture(authSession.seed);
+  },
+  storageState: async ({ authSession }, runFixture) => {
+    await runFixture(authSession.storageState);
+  },
+});
+
+async function prepareNavigationChapters(page: Page, seed: AuthSeed) {
+  await page.goto(`/projects/${seed.projectId}/write?chapter=${seed.chapterId}`);
+  const titleInput = page.getByPlaceholder("제목 입력...");
+  await expect(titleInput).not.toHaveValue("");
+  const stamp = Date.now();
+  const source = { id: seed.chapterId, title: `이동 출발 ${stamp}` };
+  await titleInput.fill(source.title);
+  const targets: { id: string; title: string }[] = [];
+  for (const name of ["이동 중간", "이동 도착"]) {
+    await page.getByRole("button", { name: "새 챕터 만들기", exact: true }).click();
+    await expect(titleInput).toHaveValue("");
+    const target = { id: new URL(page.url()).searchParams.get("chapter")!, title: `${name} ${stamp}` };
+    await titleInput.fill(target.title);
+    await expect(titleInput).toHaveValue(target.title);
+    await expect(page.getByRole("button", { name: new RegExp(target.title) })).toBeVisible();
+    targets.push(target);
+  }
+  // Clicking away must persist the exact newly typed title before activation.
+  const last = targets[targets.length - 1];
+  const savedTarget = page.waitForResponse((response) =>
+    response.request().method() === "POST" && response.ok() &&
+    Boolean(response.request().postData()?.includes(last.id) && response.request().postData()?.includes(last.title))
+  );
+  await page.getByRole("button", { name: new RegExp(source.title) }).click();
+  await savedTarget;
+  await expect(page.getByRole("button", { name: new RegExp(last.title) })).toBeVisible();
+  await expect(titleInput).toHaveValue(source.title);
+  await expect(page).toHaveURL(new RegExp(`chapter=${source.id}`));
+  return { source, middle: targets[0], last: targets[1] };
+}
 
 test.describe("authenticated project flow", () => {
-  test.use({ storageState: STORAGE_STATE_PATH });
-
-  test.beforeAll(async ({ browser }, testInfo) => {
-    // Write a valid (unauthenticated) storage state FIRST, unconditionally:
-    // `test.use({ storageState })` needs this file to exist for every test's
-    // context creation, and any throw later in this hook (login timeout,
-    // seed failure) must surface as its own error — not as an ENOENT while
-    // reading the storage state (CI run 29137196012 failure mode).
-    await mkdir(path.dirname(STORAGE_STATE_PATH), { recursive: true });
-    await writeFile(
-      STORAGE_STATE_PATH,
-      JSON.stringify({ cookies: [], origins: [] })
-    );
-
-    const env = getAuthE2EEnv();
-    if (!env.enabled) {
-      return;
-    }
-
-    // `seedAuthenticatedE2E` creates a brand-new user/project/chapter on
-    // every call (email/title are stamped with `Date.now()` in
-    // helpers/auth-seed.ts), so each worker process -- including a fresh
-    // worker spawned for a CI retry -- gets fully independent seed data.
-    // That's what makes retries "work" today; this refactor preserves it by
-    // still calling seedAuthenticatedE2E() once per beforeAll.
-    seed = await seedAuthenticatedE2E();
-    if (!seed) {
-      // Shouldn't happen when env.enabled is true; the empty state written
-      // above keeps context creation working while tests `test.skip`.
-      return;
-    }
-
-    // Log in once per worker and persist the authenticated session, instead
-    // of driving the login form from every test (x up to 3 attempts each
-    // under CI's retries: 2). That per-test-login pattern was hitting
-    // /login repeatedly without ever navigating away -- most likely
-    // Supabase auth rate limiting or a navigation race -- which is the
-    // dominant flake source in this spec.
-    // browser.newContext() does NOT inherit the config's `use` options —
-    // without an explicit baseURL the relative goto("/login") throws before
-    // the authenticated state is ever written.
-    const baseURL =
-      testInfo.project.use.baseURL ?? "http://127.0.0.1:3100";
-    const context = await browser.newContext({ baseURL });
-    const page = await context.newPage();
-    await page.goto("/login");
-    await page.getByLabel("이메일").fill(seed.email);
-    await page.getByLabel("비밀번호").fill(seed.password);
-    await page.getByRole("button", { name: "로그인" }).click();
-    await page.waitForURL(/\/projects$/);
-    await context.storageState({ path: STORAGE_STATE_PATH });
-    await context.close();
-  });
-
-  test.afterAll(async () => {
-    await cleanupAuthenticatedE2E(seed);
-  });
-
-  test("logs in and opens the seeded write workspace", async ({ page }) => {
+  test("logs in and opens the seeded write workspace", async ({ page, seed }) => {
     const env = getAuthE2EEnv();
     test.skip(!env.enabled, env.enabled ? "" : env.reason);
     test.skip(!seed, "authenticated e2e seed was not created");
@@ -111,7 +109,7 @@ test.describe("authenticated project flow", () => {
     await expect(page.getByText("리엔은 검은 서고")).toBeVisible();
   });
 
-  test("persists draft edits in the write workspace", async ({ page }) => {
+  test("persists draft edits in the write workspace", async ({ page, seed }) => {
     const env = getAuthE2EEnv();
     test.skip(!env.enabled, env.enabled ? "" : env.reason);
     test.skip(!seed, "authenticated e2e seed was not created");
@@ -121,34 +119,41 @@ test.describe("authenticated project flow", () => {
     // Guard against the hydration race: the title/body inputs can briefly be
     // empty right after navigation before client data finishes loading. This
     // only waits for *some* content to have hydrated (state-independent),
-    // not for a specific previously-tracked value, since another worker's
-    // retry of an earlier test can leave the DB row in an arbitrary prior
-    // state.
+    // not for a specific previously-tracked value, since earlier tests in
+    // this worker may already have edited its shared chapter.
     await expect(page.getByPlaceholder("제목 입력...")).not.toHaveValue("", {
       timeout: 15_000,
     });
-    await expect(page.locator(".ProseMirror")).not.toHaveText("", {
+    await expect(page.getByRole("textbox", { name: "본문 편집기", exact: true })).not.toHaveText("", {
       timeout: 15_000,
     });
 
     const title = `두 번째 장면 ${Date.now()}`;
     const body = "새벽의 감시탑에서 리엔은 두 번째 단서를 기록했다.";
 
+    const saved = page.waitForResponse((response) => {
+      const request = response.request();
+      return request.method() === "POST" &&
+        new URL(response.url()).pathname === `/projects/${seed!.projectId}/write` &&
+        Boolean(request.headers()["next-action"]) &&
+        Boolean(request.postData()?.includes(body));
+    });
     await page.getByPlaceholder("제목 입력...").fill(title);
-    await page.locator(".ProseMirror").fill(body);
+    await page.getByRole("textbox", { name: "본문 편집기", exact: true }).fill(body);
 
-    await expect(page.getByText(body)).toBeVisible();
-    await page.waitForTimeout(3_500);
+    await expect(page.getByRole("textbox", { name: "본문 편집기", exact: true })).toHaveText(body);
+    await expect(page.getByRole("status")).toContainText("변경 있음 · 저장 대기");
+    expect((await saved).ok()).toBe(true);
     await expect(page.getByText("저장됨")).toBeVisible({ timeout: 7_000 });
 
     await page.reload();
 
     await expect(page.getByPlaceholder("제목 입력...")).toHaveValue(title);
-    await expect(page.getByText(body)).toBeVisible();
+    await expect(page.getByRole("textbox", { name: "본문 편집기", exact: true })).toHaveText(body);
     await expect(page.getByText(title).first()).toBeVisible();
   });
 
-  test("preserves draft content when switching between chapters", async ({ page }) => {
+  test("preserves draft content when switching between chapters", async ({ page, seed }) => {
     const env = getAuthE2EEnv();
     test.skip(!env.enabled, env.enabled ? "" : env.reason);
     test.skip(!seed, "authenticated e2e seed was not created");
@@ -159,7 +164,7 @@ test.describe("authenticated project flow", () => {
     await expect(page.getByPlaceholder("제목 입력...")).not.toHaveValue("", {
       timeout: 15_000,
     });
-    await expect(page.locator(".ProseMirror")).not.toHaveText("", {
+    await expect(page.getByRole("textbox", { name: "본문 편집기", exact: true })).not.toHaveText("", {
       timeout: 15_000,
     });
 
@@ -167,7 +172,7 @@ test.describe("authenticated project flow", () => {
     const chapterOneBody =
       "나엔은 숲길에서 쓰러진 낯선 아이를 발견했다. 아이는 자신을 마왕이라고 말했다.";
     await page.getByPlaceholder("제목 입력...").fill(chapterOneTitle);
-    await page.locator(".ProseMirror").fill(chapterOneBody);
+    await page.getByRole("textbox", { name: "본문 편집기", exact: true }).fill(chapterOneBody);
     await expect(page.getByText(chapterOneBody)).toBeVisible();
 
     await page.getByRole("button", { name: "새 챕터 만들기" }).click();
@@ -175,9 +180,9 @@ test.describe("authenticated project flow", () => {
 
     const chapterTwoTitle = `자칭 마왕을 주웠다 (2) ${Date.now()}`;
     const chapterTwoBody =
-      "리켈은 작은 손으로 낡은 망토를 움켜쥐고, 자신이 잃어버린 왕국을 되찾겠다고 말했다.";
+      "세란은 작은 손으로 낡은 망토를 움켜쥐고, 자신이 잃어버린 왕국을 되찾겠다고 말했다.";
     await page.getByPlaceholder("제목 입력...").fill(chapterTwoTitle);
-    await page.locator(".ProseMirror").fill(chapterTwoBody);
+    await page.getByRole("textbox", { name: "본문 편집기", exact: true }).fill(chapterTwoBody);
     await expect(page.getByText(chapterTwoBody)).toBeVisible();
 
     const escapedChapterOneTitle = chapterOneTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -196,7 +201,7 @@ test.describe("authenticated project flow", () => {
     await expect(page.getByText(chapterTwoBody)).toBeVisible();
   });
 
-  test("renders entity underlines and graph filter states in the write workspace", async ({ page }) => {
+  test("renders entity underlines and graph filter states in the write workspace", async ({ page, seed }) => {
     const env = getAuthE2EEnv();
     test.skip(!env.enabled, env.enabled ? "" : env.reason);
     test.skip(!seed, "authenticated e2e seed was not created");
@@ -207,11 +212,11 @@ test.describe("authenticated project flow", () => {
     await expect(page.getByPlaceholder("제목 입력...")).not.toHaveValue("", {
       timeout: 15_000,
     });
-    await expect(page.locator(".ProseMirror")).not.toHaveText("", {
+    await expect(page.getByRole("textbox", { name: "본문 편집기", exact: true })).not.toHaveText("", {
       timeout: 15_000,
     });
 
-    const editor = page.locator(".ProseMirror");
+    const editor = page.getByRole("textbox", { name: "본문 편집기", exact: true });
     await editor.fill(seed!.chapterContent);
     await expect(editor).toContainText("리엔은 검은 서고");
 
@@ -256,7 +261,7 @@ test.describe("authenticated project flow", () => {
     await expect(graphModal.getByText("선택: 리엔")).toBeVisible();
   });
 
-  test("confirms source-backed suggestions into Codex, search, and relationship preview", async ({ page }) => {
+  test("confirms source-backed suggestions into Codex, search, and relationship preview", async ({ page, seed }) => {
     const env = getAuthE2EEnv();
     test.skip(!env.enabled, env.enabled ? "" : env.reason);
     test.skip(!seed, "authenticated e2e seed was not created");
@@ -272,7 +277,7 @@ test.describe("authenticated project flow", () => {
     await expect(page.getByPlaceholder("제목 입력...")).not.toHaveValue("", {
       timeout: 15_000,
     });
-    await expect(page.locator(".ProseMirror")).not.toHaveText("", {
+    await expect(page.getByRole("textbox", { name: "본문 편집기", exact: true })).not.toHaveText("", {
       timeout: 15_000,
     });
 
@@ -285,7 +290,7 @@ test.describe("authenticated project flow", () => {
     await expect(page.getByText("검은 관리자에게 비밀을 숨기고 있다")).toBeVisible();
     // The fact's evidence_text ("렌은 검은 관리자에게 비밀을 숨겼다.") is a
     // verbatim substring of the chapter body, which is simultaneously live
-    // in the .ProseMirror editor on this same page (the previous test wrote
+    // in the body editor on this same page (the previous test wrote
     // the full seed sentence back into it). getByText() substring-matches
     // both the editor paragraph and the suggestion <blockquote>
     // (fact-suggestion-list.tsx), causing a strict-mode violation. Scope to
@@ -354,4 +359,115 @@ test.describe("authenticated project flow", () => {
     await expect(page.getByRole("link", { name: "푸른 문" })).toBeVisible();
     await expect(page.getByText("작품 기억").last()).toBeVisible();
   });
+
+  test("creates only one chapter during slow repeated clicks", async ({ page, seed }) => {
+    test.skip(!seed, "authenticated e2e seed was not created");
+    await page.goto(`/projects/${seed!.projectId}/write?chapter=${seed!.chapterId}`);
+    await expect(page.getByRole("textbox", { name: "본문 편집기" })).not.toHaveText("");
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let createRequests = 0;
+    await page.route("**/write*", async (route) => {
+      const request = route.request();
+      if (request.method() === "POST" && request.postData()?.includes("requestId")) {
+        createRequests++;
+        await held;
+      }
+      await route.continue();
+    });
+    try {
+      const createButton = page.getByRole("button", { name: "새 챕터 만들기", exact: true });
+      await createButton.evaluate((button: HTMLButtonElement) => {
+        button.click();
+        button.click();
+      });
+      await expect.poll(() => createRequests).toBe(1);
+      await expect(createButton).toBeDisabled();
+      await expect(page).toHaveURL(new RegExp(`chapter=${seed!.chapterId}`));
+      release();
+      await expect(page).not.toHaveURL(new RegExp(`chapter=${seed!.chapterId}`));
+      await expect(page.getByPlaceholder("제목 입력...")).toHaveValue("");
+      await expect(createButton).toBeEnabled();
+      expect(createRequests).toBe(1);
+    } finally {
+      release();
+    }
+  });
+
+
+  test("keeps the pinned draft while saving and opens the last clicked chapter", async ({ page, seed }) => {
+    test.skip(!seed, "authenticated e2e seed was not created");
+    const { source, middle, last } = await prepareNavigationChapters(page, seed!);
+    const body = `느린 저장 중에도 지켜야 할 한글 원고 ${Date.now()}`;
+    const editor = page.getByRole("textbox", { name: "본문 편집기" });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    let saves = 0;
+    await page.route("**/write*", async (route) => {
+      if (route.request().method() === "POST" && route.request().postData()?.includes(body)) {
+        saves++;
+        await held;
+      }
+      await route.continue();
+    });
+    try {
+      await editor.fill(body);
+      await page.getByRole("button", { name: new RegExp(middle.title) }).click();
+      await expect.poll(() => saves).toBe(1);
+      await page.getByRole("button", { name: new RegExp(last.title) }).click();
+      await expect(page).toHaveURL(new RegExp(`chapter=${source.id}`));
+      await expect(page.getByRole("button", { name: new RegExp(source.title) })).toHaveAttribute("aria-current", "page");
+      await expect(editor).toHaveText(body);
+      await expect(editor).toHaveAttribute("contenteditable", "false");
+      await expect(page.getByPlaceholder("제목 입력...")).toBeDisabled();
+      release();
+      await expect(page).toHaveURL(new RegExp(`chapter=${last.id}`));
+      await expect(page.getByRole("button", { name: new RegExp(last.title) })).toHaveAttribute("aria-current", "page");
+      await expect(editor).toHaveText("");
+      await page.getByRole("button", { name: new RegExp(source.title) }).click();
+      await expect(editor).toHaveText(body);
+      await page.reload();
+      await expect(editor).toHaveText(body);
+      expect(saves).toBe(1);
+    } finally {
+      release();
+    }
+  });
+
+  test("keeps the draft after a failed URL change and retries safely", async ({ page, seed }) => {
+    test.skip(!seed, "authenticated e2e seed was not created");
+    const { source, last } = await prepareNavigationChapters(page, seed!);
+    const body = `실패해도 남아야 할 한글 원고 ${Date.now()}`;
+    const editor = page.getByRole("textbox", { name: "본문 편집기" });
+    let failures = 0;
+    await page.route("**/write*", async (route) => {
+      if (failures === 0 && route.request().method() === "POST" && route.request().postData()?.includes(body)) {
+        failures++;
+        await route.abort("failed");
+      } else {
+        await route.continue();
+      }
+    });
+    await editor.fill(body);
+    await page.evaluate((id) => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("chapter", id);
+      window.history.pushState(null, "", url);
+    }, last.id);
+    await expect(page.getByRole("status")).toContainText("저장 실패");
+    await expect(page).toHaveURL(new RegExp(`chapter=${source.id}`));
+    await expect(page.getByRole("button", { name: new RegExp(source.title) })).toHaveAttribute("aria-current", "page");
+    await expect(editor).toHaveText(body);
+    await expect(editor).toHaveAttribute("contenteditable", "true");
+    await expect(page.getByPlaceholder("제목 입력...")).toBeEnabled();
+    await page.getByRole("button", { name: new RegExp(last.title) }).click();
+    await expect(page).toHaveURL(new RegExp(`chapter=${last.id}`));
+    await expect(editor).toHaveText("");
+    await page.getByRole("button", { name: new RegExp(source.title) }).click();
+    await expect(editor).toHaveText(body);
+    await page.reload();
+    await expect(editor).toHaveText(body);
+    expect(failures).toBe(1);
+  });
+
 });

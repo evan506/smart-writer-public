@@ -24,7 +24,7 @@ import {
 } from "./helpers/local-supabase";
 import type { IntegrationClient } from "./helpers/env";
 
-type SeededProject = {
+type SeededBlackiron = {
   userId: string;
   projectId: string;
   seed: SearchRAGSeedContract;
@@ -52,7 +52,7 @@ const seedCases: SearchRAGSeedCase[] = [
 const env = getLocalSupabaseEnv();
 const runner = env.enabled ? describe : describe.skip;
 
-async function cleanupSeed(activeEnv: Extract<LocalSupabaseEnv, { enabled: true }>, seeded: SeededProject | null) {
+async function cleanupSeed(activeEnv: Extract<LocalSupabaseEnv, { enabled: true }>, seeded: SeededBlackiron | null) {
   if (!seeded) return;
   await activeEnv.service.from("projects").delete().eq("id", seeded.projectId);
   await activeEnv.service.auth.admin.deleteUser(seeded.userId);
@@ -61,7 +61,7 @@ async function cleanupSeed(activeEnv: Extract<LocalSupabaseEnv, { enabled: true 
 async function seedContract(
   activeEnv: Extract<LocalSupabaseEnv, { enabled: true }>,
   buildSeed: () => SearchRAGSeedContract
-): Promise<SeededProject> {
+): Promise<SeededBlackiron> {
   const owner = await createLocalOwnerClient(activeEnv);
   const seed = buildSeed();
   const project = {
@@ -116,7 +116,7 @@ async function countSeedRows(
 
 async function buildRecallCases(
   activeEnv: Extract<LocalSupabaseEnv, { enabled: true }>,
-  seeded: SeededProject
+  seeded: SeededBlackiron
 ): Promise<SearchTopKCase[]> {
   const search = new SearchService(seeded.ownerClient);
   const graph = new GraphRAGService(activeEnv.service);
@@ -239,7 +239,7 @@ runner("Search/RAG DB-backed seed runner", () => {
     return;
   }
 
-  let seeded: SeededProject | null = null;
+  let seeded: SeededBlackiron | null = null;
 
   afterEach(async () => {
     await cleanupSeed(env, seeded);

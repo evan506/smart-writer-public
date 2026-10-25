@@ -34,7 +34,7 @@ describe("Codex FactsSection", () => {
                 chapterTitle: "첫 만남",
                 chunkId: "chunk-1",
                 evidenceKind: "DIRECT",
-                evidenceText: "리엔은 변방 마을의 영주로 불렸다.",
+                evidenceText: "리엔는 변방 마을의 영주로 불렸다.",
               },
               {
                 id: "source-2",
@@ -71,7 +71,7 @@ describe("Codex FactsSection", () => {
 
     expect(html).toContain("변방 마을의 영주");
     expect(html).toContain("1화 · 첫 만남 근거 외 3개");
-    expect(html).toContain("리엔은 변방 마을의 영주로 불렸다.");
+    expect(html).toContain("리엔는 변방 마을의 영주로 불렸다.");
     expect(html).toContain("영주는 마을의 방어를 맡았다.");
     expect(html).toContain("회의에서 리엔의 직책이 다시 언급됐다.");
     expect(html).toContain("근거 1개 더 있음");

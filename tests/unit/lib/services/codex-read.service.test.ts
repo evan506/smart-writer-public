@@ -254,7 +254,7 @@ describe("codex read service", () => {
             fact_id: "fact-1",
             chapter_id: "chapter-2",
             chunk_id: "chunk-1",
-            evidence_text: "리엔은 하이엘프라고 소개됐다.",
+            evidence_text: "리엔는 하이엘프라고 소개됐다.",
             evidence_kind: "DIRECT",
           },
           {
@@ -302,7 +302,7 @@ describe("codex read service", () => {
               chapterNum: 2,
               chapterTitle: "정체",
               chunkId: "chunk-1",
-              evidenceText: "리엔은 하이엘프라고 소개됐다.",
+              evidenceText: "리엔는 하이엘프라고 소개됐다.",
               evidenceKind: "DIRECT",
             },
           ],

@@ -1,3 +1,4 @@
+import { createLLMBudgetGuard } from "./llm-budget.service";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 import type { AIAnalysisResult } from "@/types/ai-analysis";
@@ -18,7 +19,7 @@ export class AIAnalysisService {
     options: { userId?: string | null } = {}
   ): Promise<AIAnalysisResult> {
     const assembler = new ContextAssemblyService(this.supabase);
-    const ctx = await assembler.assemble(projectId, chapterId, content);
+    const ctx = await assembler.assemble(projectId, chapterId, content, options);
 
     const { system, user } = buildAnalysisPrompt(ctx);
     const raw = await callLLM({
@@ -26,13 +27,14 @@ export class AIAnalysisService {
       user,
       maxTokens: 4096,
       model: getLLMModel("analysis"),
+      beforeRequest: createLLMBudgetGuard(this.supabase, { projectId, userId: options.userId }),
       onComplete: createLLMUsageLogger(this.supabase, {
         projectId,
         userId: options.userId ?? null,
         feature: "analysis",
         promptTemplateKey: "analysis.chapter",
         promptTemplateVersion: getPromptTemplateVersion("analysis.chapter"),
-      }),
+      }, { failOnError: true }),
     });
 
     // Parse JSON response — strip markdown code fences first

@@ -11,9 +11,10 @@ export function CodexEntityCard({ entity, isSelected, onClick }: CodexEntityCard
   const color = getColor(entity.type);
 
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
-      className="rounded-[10px] p-3 cursor-pointer transition-all"
+      className="w-full text-left rounded-[10px] p-3 cursor-pointer transition-all"
       style={(() => {
         const needsAttention = entity.status !== "confirmed" && !isSelected;
         const borderColor = isSelected
@@ -98,6 +99,6 @@ export function CodexEntityCard({ entity, isSelected, onClick }: CodexEntityCard
         <span>↔{entity.relationCount}</span>
         <span>{entity.firstChapter != null ? `${entity.firstChapter}화` : "—"}</span>
       </div>
-    </div>
+    </button>
   );
 }

@@ -1,16 +1,15 @@
 "use server";
 
-import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { requireProjectOwner } from "@/lib/auth/ownership";
-import { createLLMUsageLogger, embedText } from "@/lib/services";
 import {
   emptyCodexData,
   getCodexDataForProject,
 } from "@/lib/services/codex/read.service";
 import {
   createCodexEntity,
+  scheduleEntityEmbedding,
   deleteCodexEntity,
   mergeCodexEntityAsAlias,
   updateCodexEntity,
@@ -21,8 +20,18 @@ import {
   updateCodexEntityLink,
 } from "@/lib/services/codex/link-mutation.service";
 import {
+  requireCodexEntityTarget,
+  requireCodexEntityTargets,
+  requireCodexLinkTarget,
+  isCodexTargetAccessError,
+} from "@/lib/services/codex/target-guard.service";
+import {
   parseCreateEntityForm,
   parseCreateEntityLinkForm,
+  parseEntityLinkDeleteInput,
+  parseEntityLinkUpdateInput,
+  parseEntityMutationIds,
+  parseUpdateEntityInlineInput,
   parseUpdateEntityForm,
   projectCodexPath,
 } from "./codex-action-forms";
@@ -182,6 +191,9 @@ export async function updateEntityInline(
     aliases: string[] | null;
   }>
 ) {
+  const parsed = parseUpdateEntityInlineInput(entityId, projectId, fields);
+  if (!parsed.ok) return { error: parsed.error };
+
   const supabase = await createClient();
 
   const owner = await requireProjectOwner(supabase, projectId);
@@ -199,12 +211,16 @@ export async function updateEntityInline(
 
   const { error } = await supabase
     .from("entities")
-    .update(fields)
+    .update(parsed.data.fields)
     .eq("id", entityId);
 
   if (error) return { error: error.message };
 
-  if (fields.name || fields.summary || fields.aliases) {
+  if (
+    parsed.data.fields.name ||
+    parsed.data.fields.summary !== undefined ||
+    parsed.data.fields.aliases !== undefined
+  ) {
     const { data: full } = await supabase
       .from("entities")
       .select("name, summary, aliases")
@@ -212,31 +228,10 @@ export async function updateEntityInline(
       .single();
 
     if (full) {
-      after(async () => {
-        const embeddingText = [
-          full.name,
-          full.summary,
-          ...(Array.isArray(full.aliases) ? (full.aliases as string[]) : []),
-        ]
-          .filter(Boolean)
-          .join(" ");
-        const bgSupabase = await createClient();
-        const embedding = await embedText(embeddingText, {
-          onComplete: createLLMUsageLogger(bgSupabase, {
-            projectId,
-            userId: owner.userId,
-            feature: "embedding",
-            promptTemplateKey: "codex.entity_embedding",
-            promptTemplateVersion: "v1",
-          }),
-        });
-        const { error: embeddingError } = await bgSupabase
-          .from("entities")
-          .update({ embedding: JSON.stringify(embedding) })
-          .eq("id", entityId);
-        if (embeddingError) {
-          console.error("[CodexActions] embedding update error:", embeddingError.message);
-        }
+      scheduleEntityEmbedding(entityId, projectId, owner.userId, {
+        name: full.name,
+        summary: full.summary,
+        aliases: Array.isArray(full.aliases) ? (full.aliases as string[]) : [],
       });
     }
   }
@@ -283,27 +278,10 @@ export async function removeEntityAlias(
 
   if (error) return { error: error.message };
 
-  after(async () => {
-    const embeddingText = [entity.name, entity.summary, ...nextAliases]
-      .filter(Boolean)
-      .join(" ");
-    const bgSupabase = await createClient();
-    const embedding = await embedText(embeddingText, {
-      onComplete: createLLMUsageLogger(bgSupabase, {
-        projectId,
-        userId: owner.userId,
-        feature: "embedding",
-        promptTemplateKey: "codex.entity_embedding",
-        promptTemplateVersion: "v1",
-      }),
-    });
-    const { error: embeddingError } = await bgSupabase
-      .from("entities")
-      .update({ embedding: JSON.stringify(embedding) })
-      .eq("id", entityId);
-    if (embeddingError) {
-      console.error("[CodexActions] embedding update error:", embeddingError.message);
-    }
+  scheduleEntityEmbedding(entityId, projectId, owner.userId, {
+    name: entity.name,
+    summary: entity.summary,
+    aliases: nextAliases,
   });
 
   revalidatePath(projectCodexPath(projectId));
@@ -313,11 +291,10 @@ export async function removeEntityAlias(
 // ── Entity CRUD ───────────────────────────────────────────────────────────
 
 export async function createEntity(formData: FormData) {
-  const supabase = await createClient();
-
   const parsed = parseCreateEntityForm(formData);
   if (!parsed.ok) return { error: parsed.error };
 
+  const supabase = await createClient();
   const { projectId, name, type, summary, aliases } = parsed.data;
 
   const owner = await requireProjectOwner(supabase, projectId);
@@ -325,6 +302,7 @@ export async function createEntity(formData: FormData) {
 
   const result = await createCodexEntity(supabase, {
     projectId,
+    userId: owner.userId,
     name,
     type,
     summary,
@@ -337,22 +315,17 @@ export async function createEntity(formData: FormData) {
 }
 
 export async function updateEntity(formData: FormData) {
-  const supabase = await createClient();
+  const parsed = parseUpdateEntityForm(formData);
+  if (!parsed.ok) return { error: parsed.error };
 
-  const { entityId, projectId, name, type, summary, aliases } =
-    parseUpdateEntityForm(formData);
+  const supabase = await createClient();
+  const { entityId, projectId, name, type, summary, aliases } = parsed.data;
 
   const owner = await requireProjectOwner(supabase, projectId);
   if (!owner.ok) return { error: owner.error };
 
-  const { data: target } = await supabase
-    .from("entities")
-    .select("project_id")
-    .eq("id", entityId)
-    .single();
-  if (!target || target.project_id !== projectId) {
-    return { error: "작품 기억 항목을 찾을 수 없습니다" };
-  }
+  const target = await requireCodexEntityTarget(supabase, entityId, projectId);
+  if (target.error) return target;
 
   const result = await updateCodexEntity(
     supabase,
@@ -363,7 +336,8 @@ export async function updateEntity(formData: FormData) {
       summary,
       aliases,
     },
-    projectId
+    projectId,
+    owner.userId
   );
   if (result.error) return result;
 
@@ -376,20 +350,16 @@ export async function deleteEntity(
   projectId: string,
   options?: { blockTerm?: boolean }
 ) {
+  const parsed = parseEntityMutationIds({ entityId, projectId });
+  if (!parsed.ok) return { error: parsed.error };
+
   const supabase = await createClient();
 
   const owner = await requireProjectOwner(supabase, projectId);
   if (!owner.ok) return { error: owner.error };
 
-  const { data: entity } = await supabase
-    .from("entities")
-    .select("project_id, name")
-    .eq("id", entityId)
-    .single();
-
-  if (!entity || entity.project_id !== projectId) {
-    return { error: "작품 기억 항목을 찾을 수 없습니다" };
-  }
+  const entity = await requireCodexEntityTarget(supabase, entityId, projectId);
+  if (entity.error !== null) return entity;
 
   const result = await deleteCodexEntity(supabase, {
     entityId,
@@ -408,12 +378,19 @@ export async function mergeEntityAsAlias(
   targetEntityId: string,
   projectId: string
 ) {
+  const parsed = parseEntityMutationIds({ sourceEntityId, targetEntityId, projectId });
+  if (!parsed.ok) return { error: parsed.error };
+  if (sourceEntityId === targetEntityId) {
+    return { error: "같은 항목으로는 합칠 수 없습니다" };
+  }
+
   const supabase = await createClient();
 
   const owner = await requireProjectOwner(supabase, projectId);
   if (!owner.ok) return { error: owner.error };
 
   const result = await mergeCodexEntityAsAlias(supabase, {
+    userId: owner.userId,
     sourceEntityId,
     targetEntityId,
     projectId,
@@ -429,31 +406,22 @@ export async function updateEntityLink(
   projectId: string,
   relationType: string
 ) {
+  const parsed = parseEntityLinkUpdateInput(linkId, projectId, relationType);
+  if (!parsed.ok) return { error: parsed.error };
+
   const supabase = await createClient();
 
   const owner = await requireProjectOwner(supabase, projectId);
   if (!owner.ok) return { error: owner.error };
 
-  // Verify ownership via from_id → entity → project
-  const { data: link } = await supabase
-    .from("entity_links")
-    .select("from_id")
-    .eq("id", linkId)
-    .single();
+  const target = await requireCodexLinkTarget(supabase, linkId, projectId);
+  if (target.error) return target;
 
-  if (!link) return { error: "관계를 찾을 수 없습니다" };
-
-  const { data: entity } = await supabase
-    .from("entities")
-    .select("project_id")
-    .eq("id", link.from_id)
-    .single();
-
-  if (!entity || entity.project_id !== projectId) {
-    return { error: "권한이 없습니다" };
-  }
-
-  const result = await updateCodexEntityLink(supabase, linkId, relationType);
+  const result = await updateCodexEntityLink(
+    supabase,
+    parsed.data.linkId,
+    parsed.data.relationType
+  );
   if (result.error) return result;
 
   revalidatePath(projectCodexPath(projectId));
@@ -463,26 +431,21 @@ export async function updateEntityLink(
 // ── Link CRUD ─────────────────────────────────────────────────────────────
 
 export async function createEntityLink(formData: FormData) {
-  const supabase = await createClient();
+  const parsed = parseCreateEntityLinkForm(formData);
+  if (!parsed.ok) return { error: parsed.error };
 
-  const { projectId, fromId, toId, relationType, direction, weight } =
-    parseCreateEntityLinkForm(formData);
+  const supabase = await createClient();
+  const { projectId, fromId, toId, relationType, direction, weight } = parsed.data;
 
   const owner = await requireProjectOwner(supabase, projectId);
   if (!owner.ok) return { error: owner.error };
 
-  // Both endpoints must belong to the owned project (defence-in-depth on RLS).
-  const { data: endpoints } = await supabase
-    .from("entities")
-    .select("id, project_id")
-    .in("id", [fromId, toId]);
-  if (
-    !endpoints ||
-    endpoints.length !== new Set([fromId, toId]).size ||
-    endpoints.some((e) => e.project_id !== projectId)
-  ) {
-    return { error: "권한이 없거나 존재하지 않는 작품 기억 항목입니다" };
-  }
+  const endpoints = await requireCodexEntityTargets(
+    supabase,
+    [fromId, toId],
+    projectId,
+  );
+  if (endpoints.error) return endpoints;
 
   const result = await createCodexEntityLink(supabase, {
     fromId,
@@ -503,28 +466,16 @@ export async function deleteEntityLink(
   _entityId: string
 ) {
   void _entityId;
+  const parsed = parseEntityLinkDeleteInput({ linkId, entityId: _entityId, projectId });
+  if (!parsed.ok) return { error: parsed.error };
+
   const supabase = await createClient();
 
   const owner = await requireProjectOwner(supabase, projectId);
   if (!owner.ok) return { error: owner.error };
 
-  const { data: link } = await supabase
-    .from("entity_links")
-    .select("from_id")
-    .eq("id", linkId)
-    .single();
-
-  if (!link) return { error: "관계를 찾을 수 없습니다" };
-
-  const { data: entity } = await supabase
-    .from("entities")
-    .select("project_id")
-    .eq("id", link.from_id)
-    .single();
-
-  if (!entity || entity.project_id !== projectId) {
-    return { error: "권한이 없습니다" };
-  }
+  const target = await requireCodexLinkTarget(supabase, linkId, projectId);
+  if (target.error) return target;
 
   const result = await deleteCodexEntityLink(supabase, linkId);
   if (result.error) return result;
@@ -539,22 +490,30 @@ export async function deleteEntityLinkByRelation(
   relationType: string,
   projectId: string
 ) {
+  const parsed = parseEntityLinkDeleteInput({
+    entityId,
+    relatedId,
+    relationType,
+    projectId,
+  });
+  if (!parsed.ok) return { error: parsed.error };
+
   const supabase = await createClient();
 
   const owner = await requireProjectOwner(supabase, projectId);
   if (!owner.ok) return { error: owner.error };
 
-  const { data: entities } = await supabase
-    .from("entities")
-    .select("id, project_id")
-    .in("id", [entityId, relatedId]);
-
-  if (
-    !entities ||
-    entities.length !== 2 ||
-    entities.some((e) => e.project_id !== projectId)
-  ) {
-    return { error: "권한이 없습니다" };
+  const entities = await requireCodexEntityTargets(
+    supabase,
+    [entityId, relatedId],
+    projectId,
+  );
+  if (entities.error) {
+    return {
+      error: isCodexTargetAccessError(entities.error)
+        ? "권한이 없습니다"
+        : entities.error,
+    };
   }
 
   const { data: link } = await supabase

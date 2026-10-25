@@ -1,3 +1,4 @@
+import { createLLMBudgetGuard } from "./llm-budget.service";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 import { callLLM } from "./llm.service";
@@ -20,6 +21,7 @@ export interface CanonQACitation {
   label: string;
   content: string;
   score: number;
+  metadata?: RAGResultItem["metadata"];
 }
 
 export interface CanonQAResult {
@@ -53,6 +55,8 @@ function clipContent(content: string, maxLength = 900): string {
 function buildEvidenceBlock(items: RAGResultItem[]): string {
   return items
     .map((item, index) => {
+      const metadata = item.metadata;
+      const entityIds = metadata?.entityIds ?? [];
       const label =
         item.type === "entity"
           ? "승인된 Codex"
@@ -63,8 +67,16 @@ function buildEvidenceBlock(items: RAGResultItem[]): string {
         `[${index + 1}] ${label}`,
         `제목: ${item.title}`,
         `출처 유형: ${item.source}`,
+        `근거 ID: ${item.id}`,
+        // Entity context combines multiple sources; it has no single chapter location.
+        item.type !== "entity" && metadata?.chapterId ? `회차 ID: ${metadata.chapterId}` : null,
+        item.type !== "entity" && metadata?.chapterNum != null ? `회차: ${metadata.chapterNum}화` : null,
+        item.type === "chunk" && metadata?.chunkPosition != null ? `원문 조각 순서(0부터): ${metadata.chunkPosition}` : null,
+        entityIds.length > 0
+          ? `${item.type === "entity" ? "대상 항목 ID" : "색인된 언급 항목 ID"}: ${JSON.stringify(entityIds.slice(0, 8))}${entityIds.length > 8 ? ` (외 ${entityIds.length - 8}개)` : ""}`
+          : null,
         `내용: ${clipContent(item.content)}`,
-      ].join("\n");
+      ].filter((line): line is string => line !== null).join("\n");
     })
     .join("\n\n");
 }
@@ -204,24 +216,31 @@ export class CanonQAService {
    */
   private async buildKeywordChapterEvidence(
     projectId: string,
-    keywords: string[]
+    searchKeywords: string[],
+    snippetKeywords: string[],
+    question: string,
+    entitiesPromise: Promise<EntityRow[]>
   ): Promise<RAGResultItem[]> {
-    if (keywords.length === 0) return [];
+    if (searchKeywords.length === 0) return [];
 
     try {
-      const chapters = await this.searchService.searchChaptersBm25(
-        projectId,
-        keywords.join(" "),
-        4
-      );
+      const [chapters, entities] = await Promise.all([
+        this.searchService.searchChaptersBm25(
+          projectId, searchKeywords.join(" "), 4, { wordSimilarityThreshold: 0.25 }
+        ),
+        entitiesPromise,
+      ]);
+      const mentionedNames = entities
+        .map((entity) => entity.name)
+        .filter((name) => name.length >= 2 && normalizeText(question).includes(normalizeText(name)));
       return chapters.map((chapter) => ({
         id: chapter.id,
         source: "bm25" as const,
         type: "chapter" as const,
         title: chapter.title ?? `Chapter ${chapter.chapter_num}`,
-        content: extractKeywordSnippet(chapter.content ?? "", keywords, 400),
+        content: extractKeywordSnippet(chapter.content ?? "", snippetKeywords, 400, { extendTail: true, includeSceneStart: true, mentionedNames }),
         score: chapter.rank ?? 0,
-        metadata: { chapterNum: chapter.chapter_num },
+        metadata: { chapterId: chapter.id, chapterNum: chapter.chapter_num },
       }));
     } catch (error) {
       console.error(
@@ -232,16 +251,21 @@ export class CanonQAService {
     }
   }
 
-  private async buildEntityContextEvidence(
-    projectId: string,
-    question: string
-  ): Promise<RAGResultItem[]> {
-    const { data: entities, error: entityError } = await this.supabase
+  private async loadProjectEntities(projectId: string): Promise<EntityRow[]> {
+    const { data, error } = await this.supabase
       .from("entities")
       .select("id, name, type, summary, aliases")
       .eq("project_id", projectId);
+    return error ? [] : (data ?? []) as EntityRow[];
+  }
 
-    if (entityError || !entities || entities.length === 0) return [];
+  private async buildEntityContextEvidence(
+    projectId: string,
+    question: string,
+    entitiesPromise: Promise<EntityRow[]>
+  ): Promise<RAGResultItem[]> {
+    const entities = await entitiesPromise;
+    if (entities.length === 0) return [];
 
     const entity = findMentionedEntity(question, entities as EntityRow[]);
     if (!entity) return [];
@@ -337,9 +361,7 @@ export class CanonQAService {
         title: `${entity.name} 작품 기억 컨텍스트`,
         content,
         score: 1,
-        metadata: first
-          ? { entityType: entity.type, chapterNum: first.chapter.chapter_num }
-          : { entityType: entity.type },
+        metadata: { entityType: entity.type, entityIds: [entity.id] },
       },
     ];
   }
@@ -363,16 +385,18 @@ export class CanonQAService {
     }
 
     const keywords = extractContentKeywords(question);
+    const searchKeywords = extractContentKeywords(question, { includeStems: false });
+    const entitiesPromise = this.loadProjectEntities(params.projectId);
     const [entityContextItems, searchResult, keywordChapterItems] =
       await Promise.all([
-        this.buildEntityContextEvidence(params.projectId, question),
-        this.ragSearch.search(params.projectId, question),
-        this.buildKeywordChapterEvidence(params.projectId, keywords),
+        this.buildEntityContextEvidence(params.projectId, question, entitiesPromise),
+        this.ragSearch.search(params.projectId, question, { userId: params.userId, propagateBudgetErrors: true }),
+        this.buildKeywordChapterEvidence(params.projectId, searchKeywords, keywords, question, entitiesPromise),
       ]);
 
     // Priority: entity identity context, then keyword-targeted chapter
-    // passages, then generic RAG items. Dedup by (type,id) and by normalized
-    // content so the same passage never occupies two evidence slots.
+    // passages, then generic RAG items. Dedup by (type,id) and complete
+    // normalized content so a shared introduction cannot hide different outcomes.
     const seenIds = new Set<string>();
     const seenContent = new Set<string>();
     const evidenceItems = [
@@ -383,7 +407,7 @@ export class CanonQAService {
       .filter((item) => {
         if (item.content.trim().length === 0) return false;
         const idKey = `${item.type}:${item.id}`;
-        const contentKey = item.content.replace(/\s+/g, "").slice(0, 200);
+        const contentKey = item.content.replace(/\s+/g, "");
         if (seenIds.has(idKey) || seenContent.has(contentKey)) return false;
         seenIds.add(idKey);
         seenContent.add(contentKey);
@@ -406,13 +430,14 @@ export class CanonQAService {
       maxTokens: 700,
       model: getLLMModel("canonQnA"),
       temperature: 0,
+      beforeRequest: createLLMBudgetGuard(this.supabase, { projectId: params.projectId, userId: params.userId }),
       onComplete: createLLMUsageLogger(this.supabase, {
         projectId: params.projectId,
         userId: params.userId,
         feature: "search_rag",
         promptTemplateKey: "canon_qna",
         promptTemplateVersion: getPromptTemplateVersion("canon_qna"),
-      }),
+      }, { failOnError: true }),
     });
 
     const parsed = parseCanonQAResponse(raw, evidenceItems.length);
@@ -427,6 +452,7 @@ export class CanonQAService {
         label: buildCitationLabel(item),
         content: clipContent(item.content, 260),
         score: item.score,
+        ...(item.metadata ? { metadata: item.metadata } : {}),
       };
     });
 

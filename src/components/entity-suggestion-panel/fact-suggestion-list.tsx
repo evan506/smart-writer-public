@@ -103,7 +103,7 @@ export function FactSuggestionList({
         )}
       </div>
       <p style={{ fontSize: "10px", color: "var(--sw-text-ghost)", margin: "-4px 0 2px", opacity: 0.75 }}>
-        승인하면 출처가 연결된 설정으로 저장됩니다. 항목 후보에 붙은 설정은 먼저 작품 기억으로 승인해야 저장할 수 있습니다.
+        승인하면 출처가 연결된 설정으로 저장됩니다. 항목 후보에 붙은 설정은 먼저 작품 기억으로 승인해야 저장할 수 있습니다. 항목 요약을 수정해도 이 세부 설정 후보는 바뀌지 않으므로 각 원문 근거를 확인해 주세요.
       </p>
 
       {suggestions.map((suggestion) => {
@@ -266,6 +266,7 @@ export function FactSuggestionList({
                   항목 연결이 먼저 필요합니다
                 </strong>
                 {waitForEntityMessage}
+                <span style={{ display: "block", marginTop: "4px" }}>항목 후보를 넘겼다면 이 세부 설정 후보도 따로 넘겨 주세요. 항목을 넘겨도 연결된 설정이 자동으로 없어지지는 않습니다.</span>
                 {suggestion.entitySuggestionId && onLocateEntitySuggestion && (
                   <button
                     type="button"

@@ -13,24 +13,19 @@ export interface EntitySuggestionBuildContext {
 }
 
 export function findKnownEntityIdByName(
-  entities: KnownEntity[],
+  entities: Array<{ id?: string; name: string; aliases?: unknown }>,
   name: string
 ): string | null {
   const target = normalizeEntityName(name);
   if (!target) return null;
 
-  for (const entity of entities) {
-    if (normalizeEntityName(entity.name) === target) {
-      return entity.id ?? null;
-    }
-    for (const alias of entity.aliases ?? []) {
-      if (normalizeEntityName(alias) === target) {
-        return entity.id ?? null;
-      }
-    }
-  }
-
-  return null;
+  const matches = entities.filter((entity) =>
+    [entity.name, ...(Array.isArray(entity.aliases) ? entity.aliases.filter((alias): alias is string => typeof alias === "string") : [])].some(
+      (value) => normalizeEntityName(value) === target
+    )
+  );
+  const ids = new Set(matches.map((entity) => entity.id).filter(Boolean));
+  return ids.size === 1 ? [...ids][0]! : null;
 }
 
 export function decideEntitySuggestionAction(
@@ -46,7 +41,6 @@ export function decideEntitySuggestionAction(
       knownEntities,
       entity.alias_of ?? ""
     );
-    if (!matchedEntityId) return null;
 
     return {
       suggestedAction: "MERGE",
@@ -54,11 +48,21 @@ export function decideEntitySuggestionAction(
     };
   }
 
-  if (knownEntityNames.has(normalizeEntityName(entity.name))) {
+  const matchedEntityId = findKnownEntityIdByName(knownEntities, entity.name);
+  if (matchedEntityId) {
+    const canonical = knownEntities.find((known) => known.id === matchedEntityId)!;
     return {
-      suggestedAction: "UPDATE",
-      matchedEntityId: null,
+      suggestedAction: canonical.name === entity.name ? "UPDATE" : "MERGE",
+      matchedEntityId,
     };
+  }
+  const hasIdentityMatch = knownEntities.some((known) =>
+    [known.name, ...(known.aliases ?? [])].some(
+      (name) => normalizeEntityName(name) === normalizeEntityName(entity.name)
+    )
+  );
+  if (hasIdentityMatch || knownEntityNames.has(normalizeEntityName(entity.name))) {
+    return { suggestedAction: "MERGE", matchedEntityId: null };
   }
 
   return {

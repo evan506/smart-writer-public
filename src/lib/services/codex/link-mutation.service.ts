@@ -1,12 +1,13 @@
 import { createClient } from "@/lib/supabase/server";
 import type { LinkDirection } from "@/types";
+import type { RelationType } from "@/lib/relation-schema";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
 export type CodexEntityLinkMutationInput = {
   fromId: string;
   toId: string;
-  relationType: string;
+  relationType: RelationType;
   direction: LinkDirection;
   weight: number;
 };
@@ -37,7 +38,7 @@ export async function createCodexEntityLink(
 export async function updateCodexEntityLink(
   supabase: SupabaseClient,
   linkId: string,
-  relationType: string
+  relationType: RelationType
 ): Promise<{ error: string | null }> {
   const { error } = await supabase
     .from("entity_links")

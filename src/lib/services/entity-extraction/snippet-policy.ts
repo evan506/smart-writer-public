@@ -73,6 +73,59 @@ export function extractContextSnippets(
   return snippets;
 }
 
+/** Bounded neighbouring context for classification; never joins separate scenes. */
+export function extractClassificationContextSnippets(
+  text: string,
+  name: string
+): string[] {
+  const normalizedText = text.replace(/\s+/g, " ").trim();
+  if (!normalizedText || !name || name.length > 600) return [];
+
+  const snippets: string[] = [];
+  const seen = new Set<string>();
+  for (const scene of normalizedText.split(/\*{5,}/)) {
+    let searchFrom = 0;
+    let idx = scene.indexOf(name, searchFrom);
+    while (idx !== -1 && snippets.length < 2) {
+      const matchEnd = idx + name.length;
+      const before = scene.slice(0, idx);
+      const after = scene.slice(matchEnd);
+      const previous = Math.max(...[".", "?", "!", "。", "？", "！"]
+        .map((mark) => before.lastIndexOf(mark)));
+      const nextOffsets = [".", "?", "!", "。", "？", "！"]
+        .map((mark) => after.indexOf(mark))
+        .filter((offset) => offset !== -1);
+      let start = previous + 1;
+      let end = nextOffsets.length ? matchEnd + Math.min(...nextOffsets) + 1 : scene.length;
+
+      if (end - start > 600) {
+        // A missing sentence boundary must not expand a request without limit.
+        const spare = 600 - name.length;
+        start = Math.max(start, idx - Math.floor(spare / 2));
+        end = Math.min(end, start + 600);
+        start = Math.max(previous + 1, end - 600);
+      } else {
+        const spare = 600 - (end - start);
+        let beforeExtra = Math.min(200, start, Math.floor(spare / 2));
+        const afterExtra = Math.min(200, scene.length - end, spare - beforeExtra);
+        beforeExtra = Math.min(200, start, spare - afterExtra);
+        start -= beforeExtra;
+        end += afterExtra;
+      }
+
+      const snippet = scene.slice(start, end).trim();
+      if (snippet && !seen.has(snippet)) {
+        seen.add(snippet);
+        snippets.push(snippet);
+      }
+      searchFrom = matchEnd;
+      idx = scene.indexOf(name, searchFrom);
+    }
+    if (snippets.length >= 2) break;
+  }
+  return snippets;
+}
+
 export function attachFallbackContextSnippets<T extends EntityWithContextSnippet>(
   entities: T[],
   snippetMap: Map<string, string>

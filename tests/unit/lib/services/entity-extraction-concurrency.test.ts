@@ -60,6 +60,26 @@ describe("mapWithConcurrency", () => {
     ).rejects.toThrow("boom");
   });
 
+  it("stops scheduling after rejection and drains already-started work", async () => {
+    const gate = deferred();
+    const started: number[] = [];
+    let drained = false;
+    const task = mapWithConcurrency([0, 1, 2, 3, 4], 2, async (index) => {
+      started.push(index);
+      if (index === 0) throw new Error("budget blocked");
+      await gate.promise;
+      drained = true;
+      return index;
+    });
+    await Promise.resolve();
+    expect(started).toEqual([0, 1]);
+    const result = expect(task).rejects.toThrow("budget blocked");
+    gate.resolve();
+    await result;
+    expect(drained).toBe(true);
+    expect(started).toEqual([0, 1]);
+  });
+
   it("handles empty input and limit larger than items", async () => {
     expect(await mapWithConcurrency([], 4, async (i) => i)).toEqual([]);
     expect(await mapWithConcurrency([7], 8, async (i) => i * 2)).toEqual([14]);

@@ -12,9 +12,10 @@ export function CodexEntityRow({ entity, isSelected, onClick }: CodexEntityRowPr
   const color = getColor(entity.type);
 
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
-      className="flex items-center gap-[10px] px-[10px] py-[5px] rounded-md cursor-pointer transition-all"
+      className="flex min-h-11 w-full text-left items-center gap-[10px] px-[10px] py-[5px] rounded-md cursor-pointer transition-all"
       style={(() => {
         const needsAttention = entity.status !== "confirmed" && !isSelected;
         const borderColor = isSelected
@@ -70,7 +71,7 @@ export function CodexEntityRow({ entity, isSelected, onClick }: CodexEntityRowPr
         </div>
       </div>
 
-      <div className="w-[180px] flex gap-1 flex-shrink-0 flex-wrap items-center">
+      <div className="hidden @min-[640px]:flex w-[180px] gap-1 flex-shrink-0 flex-wrap items-center">
         <span
           className="text-[9.5px] px-[6px] py-[1px] rounded-[3px] font-semibold uppercase"
           style={{ background: `${color}28`, color }}
@@ -108,17 +109,17 @@ export function CodexEntityRow({ entity, isSelected, onClick }: CodexEntityRowPr
         )}
       </div>
 
-      <div className="w-[50px] text-right text-[11px] font-mono flex-shrink-0" style={{ color: "var(--sw-text-muted)" }}>
+      <div className="hidden @min-[640px]:block w-[50px] text-right text-[11px] font-mono flex-shrink-0" style={{ color: "var(--sw-text-muted)" }}>
         {entity.relationCount}
       </div>
 
-      <div className="w-[44px] text-right text-[11px] font-mono flex-shrink-0" style={{ color: "var(--sw-text-dim)" }}>
+      <div className="hidden @min-[640px]:block w-[44px] text-right text-[11px] font-mono flex-shrink-0" style={{ color: "var(--sw-text-dim)" }}>
         {entity.firstChapter != null ? `${entity.firstChapter}화` : "—"}
       </div>
 
       <div className="w-[64px] text-right flex-shrink-0">
         <CodexStatusBadge status={entity.status} />
       </div>
-    </div>
+    </button>
   );
 }

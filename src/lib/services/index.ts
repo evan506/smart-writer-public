@@ -13,6 +13,10 @@ export {
   checkLLMBudget,
   getLLMBudgetLimits,
   LLM_BUDGET_BLOCKED_MESSAGE,
+  LLM_BUDGET_UNAVAILABLE_MESSAGE,
+  getLLMBudgetMessage,
+  LLMBudgetError,
+  createLLMBudgetGuard,
 } from "./llm-budget.service";
 export type {
   LLMBudgetDecision,

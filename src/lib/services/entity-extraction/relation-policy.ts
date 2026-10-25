@@ -1,14 +1,10 @@
-import type { ExtractedRelation } from "../prompt-templates";
 import {
-  AUTO_REGISTER_RELATION_TYPES,
   RELATION_TYPES,
   isAllowedRelationPair,
   isKnownRelationType,
 } from "@/lib/relation-schema";
 
 export const VALID_RELATION_TYPES = new Set(RELATION_TYPES);
-
-export const AUTO_REGISTER_MIN_WEIGHT = 0.75;
 
 export function isValidRelationType(relationType: string): boolean {
   return isKnownRelationType(relationType);
@@ -20,15 +16,6 @@ export function isValidCrossTypeRelation(
   relationType: string
 ): boolean {
   return isAllowedRelationPair(fromType, toType, relationType);
-}
-
-export function isAutoRegisterableRelation(
-  relation: Pick<ExtractedRelation, "relation_type" | "weight">
-): boolean {
-  return (
-    AUTO_REGISTER_RELATION_TYPES.has(relation.relation_type) &&
-    relation.weight >= AUTO_REGISTER_MIN_WEIGHT
-  );
 }
 
 const CHARACTER_RELATION_EVIDENCE_PATTERNS: Record<string, RegExp[]> = {

@@ -2,13 +2,16 @@
 
 Use this folder for tests that connect multiple modules or require real adapters such as Supabase, repository/service combinations, or API boundaries.
 
-These tests are intentionally excluded from the default unit suite and run with:
+These tests are intentionally excluded from the default unit suite. They require an explicit
+local DB opt-in so an empty, fully skipped run cannot be mistaken for a passing test suite.
+
+For the complete local run, use:
 
 ```bash
-npm run test:integration
+bash scripts/ci/run-db-backed-integration.sh
 ```
 
-DB-backed tests are opt-in. By default they are skipped to avoid accidental remote writes.
+To run an individual DB-backed file, provide the local test environment explicitly:
 
 ```bash
 SMART_WRITER_INTEGRATION_TESTS=1 \
@@ -52,8 +55,9 @@ If the local Supabase API is served through self-signed TLS, run with:
 NODE_TLS_REJECT_UNAUTHORIZED=0
 ```
 
-CI has a separate non-skipped job named `DB-backed Search/RAG plumbing regression`.
-It starts local Supabase, resets the local DB from repo migrations, exports the local `ANON_KEY` and `SERVICE_ROLE_KEY`, and runs only `tests/integration/search-rag-db-backed.test.ts`.
+CI has a separate non-skipped job named `DB-backed integration regressions`.
+It starts local Supabase, resets the local DB from repo migrations, exports the local keys,
+and runs the explicit integration-test list in `scripts/ci/run-db-backed-integration.sh`.
 
 Verified local run:
 

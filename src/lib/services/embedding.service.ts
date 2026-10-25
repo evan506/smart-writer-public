@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { LLMBudgetError } from "./llm-budget.service";
 import {
   isTransientLLMError,
   LLMTimeoutError,
@@ -24,10 +25,13 @@ type EmbeddingClient = {
 
 export type EmbedOptions = {
   // Same callback shape as callLLM so createLLMUsageLogger plugs in directly
-  // (feature: "embedding"). One metadata emission per embedText/embedTexts
-  // call, with usage aggregated across internal batches.
+  // (feature: "embedding"). Aggregate by default; guarded callers record
+  // individual batches before checking the next paid attempt.
   onComplete?: LLMUsageCallback;
   client?: EmbeddingClient;
+  beforeRequest?: () => Promise<void>;
+  /** Guarded batches record each completed batch before checking the next. */
+  incrementalUsage?: boolean;
 };
 
 let client: OpenAI | null = null;
@@ -36,6 +40,8 @@ function getClient(): EmbeddingClient {
   if (!client) {
     client = new OpenAI({
       baseURL: "https://openrouter.ai/api/v1",
+      // Only the application retry loop may start another paid attempt.
+      maxRetries: 0,
       apiKey: process.env.OPENROUTER_API_KEY!,
     });
   }
@@ -51,7 +57,9 @@ function aggregateUsage(usages: Array<Record<string, unknown> | undefined>) {
   return {
     prompt_tokens: usages.reduce((s, u) => s + readUsageNumber(u, "prompt_tokens"), 0),
     total_tokens: usages.reduce((s, u) => s + readUsageNumber(u, "total_tokens"), 0),
-    cost: usages.reduce((s, u) => s + readUsageNumber(u, "cost"), 0),
+    cost: usages.length > 0 && usages.every((u) => typeof u?.cost === "number" && Number.isFinite(u.cost))
+      ? usages.reduce((s, u) => s + readUsageNumber(u, "cost"), 0)
+      : undefined,
   };
 }
 
@@ -78,7 +86,7 @@ async function notifyEmbeddingUsage(
     timedOut: params.timedOut ?? false,
     success: params.success,
     usage: aggregated as unknown as LLMUsageMetadata["usage"],
-    costUsd: aggregated.cost > 0 ? aggregated.cost : undefined,
+    costUsd: aggregated.cost,
   };
   if (params.errorType) metadata.errorType = params.errorType;
   if (params.errorMessage) metadata.errorMessage = params.errorMessage;
@@ -86,6 +94,7 @@ async function notifyEmbeddingUsage(
   try {
     await onComplete(metadata);
   } catch (error) {
+    if (error instanceof LLMBudgetError) throw error;
     console.error(
       "[Embedding] usage logging callback failed:",
       error instanceof Error ? error.message : error
@@ -122,10 +131,14 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
 async function createWithRetry(
   embeddingClient: EmbeddingClient,
   params: { model: string; input: string | string[]; usage?: { include: boolean } },
-  retryCounter: { count: number }
+  retryCounter: { count: number },
+  beforeRequest?: () => Promise<void>,
+  onRetryFailure?: (error: unknown, elapsedMs: number, attempt: number) => Promise<void>
 ): Promise<EmbeddingResponse> {
   let lastError: unknown;
   for (let attempt = 0; attempt <= EMBEDDING_MAX_RETRIES; attempt += 1) {
+    await beforeRequest?.();
+    const attemptStartedAt = Date.now();
     try {
       return await withTimeout(
         embeddingClient.create(params),
@@ -136,6 +149,9 @@ async function createWithRetry(
       if (attempt >= EMBEDDING_MAX_RETRIES || !isTransientLLMError(error)) {
         throw error;
       }
+      // Record this actual request before the next guard, independently of
+      // successful batch aggregation. Strict persistence failure stops retries.
+      await onRetryFailure?.(error, Date.now() - attemptStartedAt, attempt);
       retryCounter.count += 1;
       await sleep(EMBEDDING_RETRY_DELAY_MS);
     }
@@ -150,6 +166,19 @@ function classifyEmbeddingError(error: unknown): string {
   }
   if (error instanceof Error) return error.name || "error";
   return "unknown";
+}
+
+function retryFailureLogger(onComplete: LLMUsageCallback | undefined) {
+  return (error: unknown, elapsedMs: number, attempt: number) =>
+    notifyEmbeddingUsage(onComplete, {
+      elapsedMs,
+      success: false,
+      usages: [],
+      retryCount: attempt,
+      timedOut: error instanceof LLMTimeoutError,
+      errorType: classifyEmbeddingError(error),
+      errorMessage: error instanceof Error ? error.message : undefined,
+    });
 }
 
 export async function embedText(
@@ -168,7 +197,9 @@ export async function embedText(
       embeddingClient,
       // usage.include → OpenRouter returns usage.cost; see the note in llm.service.
       { model: MODEL, input: text, usage: { include: true } },
-      retryCounter
+      retryCounter,
+      options?.beforeRequest,
+      retryFailureLogger(options?.onComplete)
     );
     await notifyEmbeddingUsage(options?.onComplete, {
       elapsedMs: Date.now() - startedAt,
@@ -178,6 +209,7 @@ export async function embedText(
     });
     return res.data[0].embedding;
   } catch (error) {
+    if (error instanceof LLMBudgetError) throw error;
     await notifyEmbeddingUsage(options?.onComplete, {
       elapsedMs: Date.now() - startedAt,
       success: false,
@@ -208,25 +240,49 @@ export async function embedTexts(
     const results: number[][] = [];
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
       const batch = texts.slice(i, i + BATCH_SIZE);
-      const res = await createWithRetry(
-        embeddingClient,
-        { model: MODEL, input: batch, usage: { include: true } },
-        retryCounter
-      );
+      const batchCounter = { count: 0 };
+      const batchStarted = Date.now();
+      let res: EmbeddingResponse;
+      try {
+        res = await createWithRetry(
+          embeddingClient,
+          { model: MODEL, input: batch, usage: { include: true } },
+          batchCounter,
+          options?.beforeRequest,
+          retryFailureLogger(options?.onComplete)
+        );
+      } catch (error) {
+        retryCounter.count += batchCounter.count;
+        if (options?.incrementalUsage && !(error instanceof LLMBudgetError)) {
+          await notifyEmbeddingUsage(options.onComplete, {
+            elapsedMs: Date.now() - batchStarted, success: false, usages: [],
+            retryCount: batchCounter.count, timedOut: error instanceof LLMTimeoutError,
+            errorType: classifyEmbeddingError(error),
+            errorMessage: error instanceof Error ? error.message : undefined,
+          });
+        }
+        throw error;
+      }
+      retryCounter.count += batchCounter.count;
       usages.push(res.usage);
-      const sorted = res.data
-        .sort((a, b) => a.index - b.index)
-        .map((d) => d.embedding);
+      if (options?.incrementalUsage) {
+        await notifyEmbeddingUsage(options.onComplete, {
+          elapsedMs: Date.now() - batchStarted, success: true, usages: [res.usage],
+          retryCount: batchCounter.count,
+        });
+      }
+      const sorted = res.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
       results.push(...sorted);
     }
-    await notifyEmbeddingUsage(options?.onComplete, {
-      elapsedMs: Date.now() - startedAt,
-      success: true,
-      usages,
-      retryCount: retryCounter.count,
-    });
+    if (!options?.incrementalUsage) {
+      await notifyEmbeddingUsage(options?.onComplete, {
+        elapsedMs: Date.now() - startedAt, success: true, usages,
+        retryCount: retryCounter.count,
+      });
+    }
     return results;
   } catch (error) {
+    if (options?.incrementalUsage || error instanceof LLMBudgetError) throw error;
     await notifyEmbeddingUsage(options?.onComplete, {
       elapsedMs: Date.now() - startedAt,
       success: false,

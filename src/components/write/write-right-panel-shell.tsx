@@ -1,5 +1,6 @@
 "use client";
 
+import { useIsMobile } from "@/hooks/use-mobile";
 import { ChevronLeft } from "lucide-react";
 import { WriteRightPanel } from "./write-right-panel";
 import type { RightPanelTab } from "./write-workspace-types";
@@ -14,6 +15,7 @@ interface WriteRightPanelShellProps {
   activeTab: RightPanelTab;
   selectedEntityId: string | null;
   isOpen: boolean;
+  mobileOpen: boolean;
   onActiveTabChange: (tab: RightPanelTab) => void;
   onSelectedEntityChange: (entityId: string | null) => void;
   onSelectChapter: (chapterId: string) => void | Promise<void>;
@@ -34,6 +36,7 @@ export function WriteRightPanelShell({
   activeTab,
   selectedEntityId,
   isOpen,
+  mobileOpen,
   onActiveTabChange,
   onSelectedEntityChange,
   onSelectChapter,
@@ -43,14 +46,15 @@ export function WriteRightPanelShell({
   onClose,
   onOpen,
 }: WriteRightPanelShellProps) {
+  const isMobile = useIsMobile(1024);
   return (
     <div
-      className={`relative shrink-0 overflow-hidden transition-[width] duration-200 ease-linear ${isOpen ? "w-[320px]" : "w-9"}`}
+      className={`relative min-w-0 shrink-0 overflow-hidden lg:block motion-safe:transition-[width] motion-safe:duration-200 ${mobileOpen ? "block w-full" : "hidden"} ${isOpen ? "lg:w-[320px]" : "lg:w-9"}`}
       style={{ borderLeft: "1px solid var(--sw-border-default)" }}
     >
       <div
-        style={{ width: "320px", height: "100%" }}
-        inert={!isOpen || undefined}
+        className="h-full w-full lg:w-[320px]"
+        inert={!(isMobile ? mobileOpen : isOpen) || undefined}
       >
         <WriteRightPanel
           projectId={projectId}
@@ -71,9 +75,11 @@ export function WriteRightPanelShell({
         />
       </div>
 
-      <div
-        className="absolute inset-0 flex w-9 flex-col items-center gap-3 pt-3 transition-opacity duration-200 ease-linear"
-        role="button"
+      <button
+        type="button"
+        tabIndex={isOpen ? -1 : 0}
+        aria-hidden={isOpen}
+        className="absolute inset-0 hidden w-9 lg:flex flex-col items-center gap-3 pt-3 transition-opacity duration-200 ease-linear"
         aria-label="우측 패널 열기"
         title="우측 패널 열기"
         style={{
@@ -100,7 +106,7 @@ export function WriteRightPanelShell({
             {pendingSuggestionCount}
           </span>
         )}
-      </div>
+      </button>
     </div>
   );
 }

@@ -1,5 +1,5 @@
 // Keyword extraction + snippet windowing for question-driven retrieval.
-// Natural-language questions ("리엔이 좌천된 이유는 무엇인가요?") match poorly as
+// Natural-language questions ("리엔가 좌천된 이유는 무엇인가요?") match poorly as
 // whole strings against trigram BM25, and chapter rows are far longer than an
 // evidence slot — so we (1) strip josa/question words down to content
 // keywords and (2) cut the evidence window around the first keyword hit
@@ -47,7 +47,10 @@ const JOSA_SUFFIX =
  * particles stripped once from each token, question/stop words dropped.
  * Longest-first so snippet windows anchor on the most specific term.
  */
-export function extractContentKeywords(question: string): string[] {
+export function extractContentKeywords(
+  question: string,
+  options: { includeStems?: boolean } = {}
+): string[] {
   const tokens = question
     // Unicode punctuation/symbols (covers full-width ？！。 etc.), not just ASCII.
     .replace(/[\p{P}\p{S}]+/gu, " ")
@@ -59,9 +62,11 @@ export function extractContentKeywords(question: string): string[] {
   // Inflection tolerance for exact snippet matching: "좌천된" in the question
   // must still find "좌천되었다" in prose, so emit a last-syllable-dropped
   // stem variant alongside each token (≥ 3 chars keeps stems meaningful).
-  const withStems = tokens.flatMap((token) =>
-    token.length >= 3 ? [token, token.slice(0, -1)] : [token]
-  );
+  const withStems = options.includeStems === false
+    ? tokens
+    : tokens.flatMap((token) =>
+        token.length >= 3 ? [token, token.slice(0, -1)] : [token]
+      );
 
   return Array.from(new Set(withStems))
     .filter((token) => !QUESTION_STOPWORDS.has(token))
@@ -81,7 +86,8 @@ const MAX_OCCURRENCES_PER_KEYWORD = 5;
 export function extractKeywordSnippet(
   content: string,
   keywords: string[],
-  windowSize = 400
+  windowSize = 400,
+  options: { extendTail?: boolean; includeSceneStart?: boolean; mentionedNames?: string[] } = {}
 ): string {
   const normalized = content.trim();
   if (normalized.length <= windowSize) return normalized;
@@ -115,12 +121,57 @@ export function extractKeywordSnippet(
     }
   }
 
+  const names = [...new Set(options.mentionedNames ?? [])].filter((name) => name.length >= 2);
+  let joint: { names: number; score: number; index: number; start: number } | null = null;
+  if (names.length >= 2) {
+    for (const name of names) {
+      let from = 0;
+      for (let n = 0; n < MAX_OCCURRENCES_PER_KEYWORD; n += 1) {
+        const index = normalized.indexOf(name, from);
+        if (index === -1) break;
+        from = index + name.length;
+        const start = Math.max(0, index - half);
+        const windowText = normalized.slice(start, start + windowSize);
+        if (windowText.includes("*****")) continue;
+        const count = names.filter((term) => windowText.includes(term)).length;
+        if (count < 2) continue;
+        const score = keywords.filter((term) => term && windowText.includes(term)).length;
+        if (!joint || count > joint.names ||
+          (count === joint.names && score > joint.score) ||
+          (count === joint.names && score === joint.score && start < joint.start)) {
+          joint = { names: count, score, index, start };
+        }
+      }
+    }
+  }
+  if (joint) best = { score: joint.score, anchorLength: 0, index: joint.index };
+
   if (best === null) {
     return `${normalized.slice(0, windowSize).trim()}...`;
   }
 
-  const start = Math.max(0, best.index - half);
-  const end = Math.min(normalized.length, start + windowSize);
+  let start = Math.max(0, best.index - half);
+  let end = Math.min(normalized.length, start + windowSize);
+  // Keep the original scoring window; only append contiguous outcome context.
+  // Never extend a seed that already crosses a scene, or enter the next scene.
+  if (options.extendTail) {
+    const sceneBoundary = normalized.indexOf("*****", start);
+    if (sceneBoundary === -1 || sceneBoundary >= end) {
+      end = Math.min(
+        normalized.length,
+        end + 400,
+        sceneBoundary === -1 ? normalized.length : sceneBoundary
+      );
+      // Use only spare capacity for the nearby opening; preserve the outcome.
+      if (options.includeSceneStart) {
+        const previousBoundary = normalized.lastIndexOf("*****", start);
+        const sceneStart = previousBoundary === -1 ? 0 : previousBoundary + 5;
+        if (sceneStart <= start && start - sceneStart <= 400 && end - sceneStart <= 800) {
+          start = sceneStart;
+        }
+      }
+    }
+  }
   const prefix = start > 0 ? "..." : "";
   const suffix = end < normalized.length ? "..." : "";
   return `${prefix}${normalized.slice(start, end).trim()}${suffix}`;

@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   test:
-    name: lint, typecheck, unit, integration, e2e, build
+    name: lint, typecheck, unit, e2e, build
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -40,7 +40,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.12.0
           cache: pnpm
 
       - name: Install dependencies
@@ -56,10 +56,16 @@ jobs:
         run: npm run knip
 
       - name: Typecheck
-        run: pnpm exec tsc --noEmit
+        run: pnpm typecheck
 
-      - name: Test all
-        run: npm run test:all
+      - name: Typecheck scripts
+        run: pnpm typecheck:scripts
+
+      - name: Unit tests with coverage gates
+        run: pnpm test:coverage
+
+      - name: Browser tests
+        run: pnpm test:e2e
 
       - name: Build
         run: npm run build
@@ -85,7 +91,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.12.0
           cache: pnpm
 
       - name: Setup Supabase CLI

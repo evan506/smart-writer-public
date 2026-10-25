@@ -1,3 +1,4 @@
+import { LLMBudgetError } from "./llm-budget.service";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 import type { QueryClassification, RAGMode } from "@/types";
@@ -5,7 +6,7 @@ import { classifyQuery, selectModes } from "./query-router";
 import { SearchService } from "./search.service";
 import { GraphRAGService } from "./graph-rag.service";
 import { embedText } from "./embedding.service";
-import { createLLMUsageLogger } from "./llm-usage-logger.service";
+import { createBudgetedEmbeddingOptions } from "./budgeted-embedding";
 import { extractContentKeywords, extractKeywordSnippet } from "./qa-keywords";
 
 export interface RAGResultItem {
@@ -17,7 +18,10 @@ export interface RAGResultItem {
   score: number;
   metadata?: {
     entityType?: string;
+    entityIds?: string[];
+    chapterId?: string;
     chapterNum?: number;
+    chunkPosition?: number;
     chunkType?: string;
     relationPath?: string;
   };
@@ -40,14 +44,18 @@ export class RAGSearchService {
     this.graphService = new GraphRAGService(supabase);
   }
 
-  async search(projectId: string, query: string): Promise<RAGSearchResult> {
+  async search(
+    projectId: string,
+    query: string,
+    options: { userId?: string | null; propagateBudgetErrors?: boolean } = {}
+  ): Promise<RAGSearchResult> {
     const start = performance.now();
     const classification = classifyQuery(query);
     const modes = selectModes(classification);
 
     // Execute modes in parallel
     const modeResults = await Promise.allSettled(
-      modes.map((mode) => this.executeMode(mode, projectId, query))
+      modes.map((mode) => this.executeMode(mode, projectId, query, options.userId))
     );
 
     // Collect all items from fulfilled modes
@@ -56,6 +64,12 @@ export class RAGSearchService {
 
     for (let i = 0; i < modes.length; i++) {
       const result = modeResults[i];
+      // A free search may degrade gracefully, but a paid workflow must stop
+      // when a preceding cost write/check failed, even if the next read recovers.
+      if (result.status === "rejected" && options.propagateBudgetErrors &&
+        result.reason instanceof LLMBudgetError) {
+        throw result.reason;
+      }
       if (result.status === "fulfilled") {
         allItems.push(...result.value);
         usedModes.push(modes[i]);
@@ -115,13 +129,14 @@ export class RAGSearchService {
   private async executeMode(
     mode: RAGMode,
     projectId: string,
-    query: string
+    query: string,
+    userId?: string | null
   ): Promise<RAGResultItem[]> {
     switch (mode) {
       case "graph":
         return this.executeGraph(projectId, query);
       case "vector":
-        return this.executeVector(projectId, query);
+        return this.executeVector(projectId, query, userId);
       case "bm25":
         return this.executeBm25(projectId, query);
       default:
@@ -172,6 +187,7 @@ export class RAGSearchService {
       score: 1 - i * 0.05,
       metadata: {
         entityType: r.entity_type,
+        entityIds: [r.entity_id],
         relationPath: r.path?.join(" → "),
       },
     }));
@@ -179,33 +195,41 @@ export class RAGSearchService {
 
   private async executeVector(
     projectId: string,
-    query: string
+    query: string,
+    userId?: string | null
   ): Promise<RAGResultItem[]> {
-    const queryEmbedding = await embedText(query, {
-      onComplete: createLLMUsageLogger(this.supabase, {
-        projectId,
-        feature: "embedding",
-        promptTemplateKey: "rag.query_embedding",
-        promptTemplateVersion: "v1",
-      }),
-    });
+    const queryEmbedding = await embedText(query, createBudgetedEmbeddingOptions(this.supabase, {
+      projectId,
+      feature: "embedding",
+      userId,
+      promptTemplateKey: "rag.query_embedding",
+      promptTemplateVersion: "v1",
+    }));
     const chunks = await this.searchService.matchChunks(queryEmbedding, {
       projectId,
       matchCount: 15,
       matchThreshold: 0.3,
     });
 
-    return chunks.map((c) => ({
-      id: c.id,
-      source: "vector" as const,
-      type: "chunk" as const,
-      title: `Chunk #${c.position ?? 0}`,
-      content: c.content ?? "",
-      score: c.similarity ?? 0,
-      metadata: {
-        chunkType: c.type,
-      },
-    }));
+    return chunks.map((c) => {
+      const entityIds = Array.isArray(c.entity_tags)
+        ? c.entity_tags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+        : undefined;
+      return {
+        id: c.id,
+        source: "vector" as const,
+        type: "chunk" as const,
+        title: `Chunk #${c.position ?? 0}`,
+        content: c.content ?? "",
+        score: c.similarity ?? 0,
+        metadata: {
+          chapterId: typeof c.chapter_id === "string" && c.chapter_id.trim().length > 0 ? c.chapter_id : undefined,
+          chunkPosition: c.position ?? undefined,
+          entityIds: entityIds?.length ? entityIds : undefined,
+          chunkType: c.type,
+        },
+      };
+    });
   }
 
   private async executeBm25(
@@ -226,6 +250,7 @@ export class RAGSearchService {
       score: e.rank ?? 0,
       metadata: {
         entityType: e.type,
+        entityIds: [e.id],
       },
     }));
 
@@ -240,6 +265,7 @@ export class RAGSearchService {
       content: extractKeywordSnippet(c.content ?? "", snippetKeywords, 400),
       score: c.rank ?? 0,
       metadata: {
+        chapterId: c.id,
         chapterNum: c.chapter_num,
       },
     }));

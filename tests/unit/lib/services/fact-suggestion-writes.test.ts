@@ -25,7 +25,7 @@ describe("fact suggestion writes", () => {
             {
               fact_type: "ROLE",
               value: "변방 마을의 영주",
-              evidence: "리엔은 변방 마을의 영주로 불렸다.",
+              evidence: "리엔는 변방 마을의 영주로 불렸다.",
               confidence: 0.8,
             },
           ],
@@ -35,7 +35,6 @@ describe("fact suggestion writes", () => {
         ["리엔", { id: "suggestion-1", matched_entity_id: null }],
       ]),
       knownEntities: [],
-      autoConfirmedEntityIds: new Map(),
     });
 
     expect(inserts).toEqual([
@@ -48,17 +47,17 @@ describe("fact suggestion writes", () => {
         fact_key: null,
         value: "변방 마을의 영주",
         confidence: 0.8,
-        evidence_text: "리엔은 변방 마을의 영주로 불렸다.",
+        evidence_text: "리엔는 변방 마을의 영주로 불렸다.",
         status: "PENDING",
       },
     ]);
   });
 
-  it("prefers approved entity ids from auto-confirmed and known entities", () => {
+  it("resolves unique approved entity IDs without auto-confirming a candidate", () => {
     const knownEntities: KnownEntity[] = [
       {
         id: "entity-known",
-        name: "리켈",
+        name: "세란",
         type: "CHARACTER",
         aliases: ["검은 늑대"],
       },
@@ -75,7 +74,7 @@ describe("fact suggestion writes", () => {
               fact_type: "ATTRIBUTE",
               fact_key: "race",
               value: "하이엘프",
-              evidence: "리엔은 하이엘프였다.",
+              evidence: "리엔는 하이엘프였다.",
             },
           ],
         }),
@@ -92,12 +91,26 @@ describe("fact suggestion writes", () => {
       ],
       entitySuggestionRefs: new Map(),
       knownEntities,
-      autoConfirmedEntityIds: new Map([["리엔", "entity-auto"]]),
     });
 
     expect(inserts.map((insert) => insert.matched_entity_id)).toEqual([
-      "entity-auto",
+      null,
       "entity-known",
     ]);
   });
+
+  it("leaves ambiguous names and unresolved review targets waiting for entity approval", () => {
+    const entities = [entity({ name: "검은 늑대", facts: [{ fact_type: "STATE", value: "수배 중", evidence: "검은 늑대는 수배 중이었다." }] })];
+    const knownEntities: KnownEntity[] = [
+      { id: "first", name: "세란", type: "CHARACTER", aliases: ["검은 늑대"] },
+      { id: "second", name: "세란2", type: "CHARACTER", aliases: ["검은늑대"] },
+    ];
+    const input = { projectId: "project", chapterId: "chapter", entities, knownEntities, entitySuggestionRefs: new Map() };
+    expect(buildFactSuggestionInserts(input)[0].matched_entity_id).toBeNull();
+    expect(buildFactSuggestionInserts({
+      ...input, knownEntities: [knownEntities[0]],
+      entitySuggestionRefs: new Map([["검은 늑대", { id: "waiting", matched_entity_id: null }]]),
+    })[0]).toMatchObject({ matched_entity_id: null, entity_suggestion_id: "waiting", status: "PENDING" });
+  });
+
 });

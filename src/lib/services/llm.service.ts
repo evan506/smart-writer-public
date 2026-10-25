@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { LLMBudgetError } from "./llm-budget.service";
 import type {
   ChatCompletion,
   ChatCompletionCreateParamsNonStreaming,
@@ -22,6 +23,8 @@ type ChatCompletionClient = {
   ): Promise<ChatCompletion>;
 };
 
+export type LLMResponseFormat = NonNullable<ChatCompletionCreateParamsNonStreaming["response_format"]>;
+
 export type LLMUsageMetadata = {
   provider: "openrouter";
   model: string;
@@ -34,6 +37,8 @@ export type LLMUsageMetadata = {
   errorMessage?: string;
   usage?: ChatCompletion["usage"];
   costUsd?: number;
+  /** Private evaluation opt-in only; never present on product usage metadata. */
+  responseDiagnostics?: { raw: string | null; finishReason: string | null };
 };
 
 export type LLMUsageCallback = (
@@ -60,6 +65,8 @@ function getClient(): OpenAI {
   if (!client) {
     client = new OpenAI({
       baseURL: "https://openrouter.ai/api/v1",
+      // Only the application retry loop may start another paid attempt.
+      maxRetries: 0,
       apiKey: process.env.OPENROUTER_API_KEY!,
     });
   }
@@ -157,6 +164,7 @@ async function notifyUsage(
   try {
     await onComplete(metadata);
   } catch (error) {
+    if (error instanceof LLMBudgetError) throw error;
     console.error(
       "[LLM] usage logging callback failed:",
       error instanceof Error ? error.message : error
@@ -183,6 +191,7 @@ function buildUsageMetadata(
   if (metadata.errorType) result.errorType = metadata.errorType;
   if (metadata.errorMessage) result.errorMessage = metadata.errorMessage;
   if (metadata.usage) result.usage = metadata.usage;
+  if (metadata.responseDiagnostics) result.responseDiagnostics = metadata.responseDiagnostics;
   return result;
 }
 
@@ -226,6 +235,10 @@ export async function callLLM(params: {
   retryDelayMs?: number;
   client?: ChatCompletionClient;
   onComplete?: LLMUsageCallback;
+  captureResponseDiagnostics?: boolean;
+  /** Explicit per-call structured output; omitted for existing product requests. */
+  responseFormat?: LLMResponseFormat;
+  beforeRequest?: () => Promise<void>;
   /** OpenRouter provider routing (order/ignore/zdr). Defaults to env-driven
    *  getLLMProviderRouting(); pass explicitly to override per call. */
   provider?: LLMProviderRouting;
@@ -267,6 +280,7 @@ export async function callLLM(params: {
     // never accumulate spend and therefore never blocked.
     usage: { include: true },
     ...(provider ? { provider } : {}),
+    ...(params.responseFormat ? { response_format: params.responseFormat } : {}),
   } as ChatCompletionCreateParamsNonStreaming;
 
   const timeoutMs = params.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -277,8 +291,12 @@ export async function callLLM(params: {
   let lastError: unknown;
   let lastUsage: ChatCompletion["usage"] | undefined;
   let lastResponseId: string | undefined;
+  let responseDiagnostics: LLMUsageMetadata["responseDiagnostics"];
   let sawTimeout = false;
   for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    // Guard outside provider catch: a rejected check is not a paid attempt.
+    await params.beforeRequest?.();
+    responseDiagnostics = undefined;
     try {
       const res = await createChatCompletionWithTimeout(
         completionClient,
@@ -289,6 +307,9 @@ export async function callLLM(params: {
       lastUsage = res.usage;
       lastResponseId = res.id;
       const content = res.choices[0]?.message?.content;
+      if (params.captureResponseDiagnostics) {
+        responseDiagnostics = { raw: content ?? null, finishReason: res.choices[0]?.finish_reason ?? null };
+      }
       if (!content) throw new LLMEmptyResponseError();
       await notifyUsage(params.onComplete, buildUsageMetadata({
         provider: "openrouter",
@@ -298,11 +319,13 @@ export async function callLLM(params: {
         retryCount: attempt,
         timedOut: sawTimeout,
         success: true,
+        responseDiagnostics,
         usage: res.usage,
         costUsd: getUsageNumber(res.usage, "cost"),
       }));
       return content;
     } catch (error) {
+      if (error instanceof LLMBudgetError) throw error;
       lastError = error;
       sawTimeout ||= error instanceof LLMTimeoutError;
       if (attempt >= maxRetries || !isTransientError(error)) {
@@ -314,6 +337,7 @@ export async function callLLM(params: {
           retryCount: attempt,
           timedOut: sawTimeout,
           success: false,
+          responseDiagnostics,
           errorType: classifyError(error),
           errorMessage: getErrorMessage(error),
           usage: lastUsage,
@@ -321,6 +345,18 @@ export async function callLLM(params: {
         }));
         throw error;
       }
+      // Persist the attempted request before a later guard can reject its retry.
+      // A provider failure has no confirmed usage; never invent a zero cost.
+      await notifyUsage(params.onComplete, buildUsageMetadata({
+        provider: "openrouter",
+        model: request.model,
+        elapsedMs: Date.now() - startedAt,
+        retryCount: attempt,
+        timedOut: error instanceof LLMTimeoutError,
+        success: false,
+        errorType: classifyError(error),
+        errorMessage: getErrorMessage(error),
+      }));
       await sleep(retryDelayMs);
     }
   }

@@ -82,7 +82,7 @@ export function ThreadConnectionPanel({
           aria-label="연결할 구상 카드"
           value={blockToLink}
           onChange={(e) => setBlockToLink(e.target.value)}
-          className="min-h-9 flex-1 rounded-md border border-sw-border-default bg-sw-bg-elevated px-2 text-xs text-sw-text-primary"
+          className="min-h-9 min-w-0 flex-1 rounded-md border border-sw-border-default bg-sw-bg-elevated px-2 text-xs text-sw-text-primary"
         >
           <option value="">구상 카드 선택…</option>
           {linkableBlockOptions.map((b) => (
@@ -105,7 +105,7 @@ export function ThreadConnectionPanel({
               return result;
             }, "구상 카드를 연결했습니다")
           }
-          className="min-h-9 rounded-md border border-sw-accent-border bg-sw-accent-bg px-3 text-xs font-bold text-sw-accent disabled:opacity-50"
+          className="min-h-9 shrink-0 rounded-md border border-sw-accent-border bg-sw-accent-bg px-3 text-xs font-bold text-sw-accent disabled:opacity-50"
         >
           연결
         </button>
@@ -120,7 +120,7 @@ export function ThreadConnectionPanel({
           aria-label="연결할 회차"
           value={chapterToLink}
           onChange={(e) => setChapterToLink(e.target.value)}
-          className="min-h-9 flex-1 rounded-md border border-sw-border-default bg-sw-bg-elevated px-2 text-xs text-sw-text-primary"
+          className="min-h-9 min-w-0 flex-1 rounded-md border border-sw-border-default bg-sw-bg-elevated px-2 text-xs text-sw-text-primary"
         >
           <option value="">회차 선택…</option>
           {linkableChapterOptions.map((c) => (
@@ -143,7 +143,7 @@ export function ThreadConnectionPanel({
               return result;
             }, "회차를 연결했습니다")
           }
-          className="min-h-9 rounded-md border border-sw-link-border bg-sw-link-soft px-3 text-xs font-bold text-sw-link disabled:opacity-50"
+          className="min-h-9 shrink-0 rounded-md border border-sw-link-border bg-sw-link-soft px-3 text-xs font-bold text-sw-link disabled:opacity-50"
         >
           연결
         </button>

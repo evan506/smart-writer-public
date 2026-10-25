@@ -98,8 +98,8 @@ describe("e2e data safety utils", () => {
         apply: false,
         usingAdmin: false,
         projects: [
-          { id: "safe-project", title: "흑철기사단 E2E 1779344199772" },
-          { id: "real-project", title: "흑철기사단 본편" },
+          { id: "safe-project", title: "마족 E2E 1779344199772" },
+          { id: "real-project", title: "마족 본편" },
         ],
         users: [
           { id: "safe-user", email: "smartwriter.e2e.1779344199772@example.com" },

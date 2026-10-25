@@ -5,16 +5,29 @@
 DO $$
 DECLARE
   v_sig text;
+  v_chapter_fn regprocedure;
   v_anon text;
   v_authenticated_missing text;
   v_service_role_missing text;
   v_public_acl text;
 BEGIN
+  -- Support both the original migration and the later QA optional-argument RPC.
+  v_chapter_fn := coalesce(
+    to_regprocedure('public.search_chapters_bm25(uuid,text,integer,double precision)'),
+    to_regprocedure('public.search_chapters_bm25(uuid,text,integer)')
+  );
+  IF v_chapter_fn IS NULL OR (
+    SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'search_chapters_bm25'
+  ) <> 1 THEN
+    RAISE EXCEPTION 'SECURITY DEFINER EXECUTE VERIFY FAILED: expected one chapter search signature';
+  END IF;
+
   WITH target(fn_oid, sig) AS (
     VALUES
       ('public.detect_conflicts(uuid)'::regprocedure, 'public.detect_conflicts(uuid)'),
       ('public.match_chat_messages(text,uuid,double precision,integer)'::regprocedure, 'public.match_chat_messages(text,uuid,double precision,integer)'),
-      ('public.search_chapters_bm25(uuid,text,integer)'::regprocedure, 'public.search_chapters_bm25(uuid,text,integer)'),
+      (v_chapter_fn, v_chapter_fn::text),
       ('public.search_entities_bm25(uuid,text,integer)'::regprocedure, 'public.search_entities_bm25(uuid,text,integer)')
   )
   SELECT string_agg(sig, ', ')
@@ -30,7 +43,7 @@ BEGIN
     VALUES
       ('public.detect_conflicts(uuid)'::regprocedure, 'public.detect_conflicts(uuid)'),
       ('public.match_chat_messages(text,uuid,double precision,integer)'::regprocedure, 'public.match_chat_messages(text,uuid,double precision,integer)'),
-      ('public.search_chapters_bm25(uuid,text,integer)'::regprocedure, 'public.search_chapters_bm25(uuid,text,integer)'),
+      (v_chapter_fn, v_chapter_fn::text),
       ('public.search_entities_bm25(uuid,text,integer)'::regprocedure, 'public.search_entities_bm25(uuid,text,integer)')
   )
   SELECT string_agg(sig, ', ')
@@ -46,7 +59,7 @@ BEGIN
     VALUES
       ('public.detect_conflicts(uuid)'::regprocedure, 'public.detect_conflicts(uuid)'),
       ('public.match_chat_messages(text,uuid,double precision,integer)'::regprocedure, 'public.match_chat_messages(text,uuid,double precision,integer)'),
-      ('public.search_chapters_bm25(uuid,text,integer)'::regprocedure, 'public.search_chapters_bm25(uuid,text,integer)'),
+      (v_chapter_fn, v_chapter_fn::text),
       ('public.search_entities_bm25(uuid,text,integer)'::regprocedure, 'public.search_entities_bm25(uuid,text,integer)')
   )
   SELECT string_agg(sig, ', ')
@@ -64,7 +77,7 @@ BEGIN
       VALUES
         ('public.detect_conflicts(uuid)'::regprocedure, 'public.detect_conflicts(uuid)'),
         ('public.match_chat_messages(text,uuid,double precision,integer)'::regprocedure, 'public.match_chat_messages(text,uuid,double precision,integer)'),
-        ('public.search_chapters_bm25(uuid,text,integer)'::regprocedure, 'public.search_chapters_bm25(uuid,text,integer)'),
+        (v_chapter_fn, v_chapter_fn::text),
         ('public.search_entities_bm25(uuid,text,integer)'::regprocedure, 'public.search_entities_bm25(uuid,text,integer)')
     ) AS target(fn_oid, sig)
     JOIN pg_proc p ON p.oid = target.fn_oid

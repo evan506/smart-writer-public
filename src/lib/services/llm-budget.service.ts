@@ -1,10 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
-// Guard scans at most this many usage rows per window; hitting the cap is
-// itself treated as runaway usage (fail safe) instead of undercounting.
-const ROW_SCAN_CAP = 10_000;
-
 export type LLMBudgetLimits = {
   dailyUsd: number | null;
   monthlyUsd: number | null;
@@ -13,6 +9,9 @@ export type LLMBudgetLimits = {
   userDailyUsd?: number | null;
   userMonthlyUsd?: number | null;
 };
+
+export type LLMUsageTotals =
+  Database["public"]["Functions"]["get_llm_usage_totals"]["Returns"][number];
 
 export type LLMBudgetScope = {
   projectId: string;
@@ -36,6 +35,7 @@ export type LLMBudgetDecision = {
     | "user_daily"
     | "user_monthly"
     | "scan_cap"
+    | "unavailable"
     | null;
   /** Highest tier crossed on any active axis while still allowed; null when
    *  under 50% everywhere or when blocked. Surfaced for ops logs / future UI. */
@@ -64,40 +64,41 @@ export function getLLMBudgetLimits(): LLMBudgetLimits {
   };
 }
 
-type WindowSums = { dayUsd: number; monthUsd: number; scanCapped: boolean };
+export const LLM_BUDGET_UNAVAILABLE_MESSAGE =
+  "원고는 저장되었습니다. AI 사용 한도를 확인할 수 없어 AI 처리를 잠시 멈췄습니다.";
 
-async function sumUsage(
+export function getLLMBudgetMessage(value: { reason: LLMBudgetDecision["reason"] }): string {
+  return value.reason === "unavailable"
+    ? "AI 사용 한도를 확인할 수 없어 AI 처리를 잠시 멈췄습니다. 잠시 후 다시 시도해 주세요."
+    : LLM_BUDGET_BLOCKED_MESSAGE;
+}
+
+export class LLMBudgetError extends Error {
+  constructor(public readonly reason: NonNullable<LLMBudgetDecision["reason"]>) {
+    super(getLLMBudgetMessage({ reason }));
+    this.name = "LLMBudgetError";
+  }
+}
+
+/** Check immediately before an actual paid attempt, including provider retries. */
+export function createLLMBudgetGuard(
   supabase: SupabaseClient<Database>,
-  column: "project_id" | "user_id",
-  id: string,
-  windowStart: Date,
-  dayStartIso: string
-): Promise<WindowSums | null> {
-  const { data, error } = await supabase
-    .from("llm_usage_logs")
-    .select("cost_usd, created_at")
-    .eq(column, id)
-    .gte("created_at", windowStart.toISOString())
-    .limit(ROW_SCAN_CAP);
+  scope: LLMBudgetScope
+): () => Promise<void> {
+  return async () => {
+    // Even optional budgets must not produce unattributed paid usage.
+    if (!scope.userId) throw new LLMBudgetError("unavailable");
+    const decision = await checkLLMBudget(supabase, scope);
+    if (!decision.allowed) throw new LLMBudgetError(decision.reason ?? "unavailable");
+  };
+}
 
-  if (error) {
-    console.error("[LLMBudget] usage query failed:", error.message);
-    return null; // fail open — a broken guard must never block author saves
-  }
+const unavailable = (): LLMBudgetDecision => ({
+  allowed: false, reason: "unavailable", warning: null,
+});
 
-  const rows = data ?? [];
-  if (rows.length >= ROW_SCAN_CAP) {
-    return { dayUsd: 0, monthUsd: 0, scanCapped: true };
-  }
-
-  let monthUsd = 0;
-  let dayUsd = 0;
-  for (const row of rows) {
-    const cost = typeof row.cost_usd === "number" ? row.cost_usd : 0;
-    monthUsd += cost;
-    if ((row.created_at ?? "") >= dayStartIso) dayUsd += cost;
-  }
-  return { dayUsd, monthUsd, scanCapped: false };
+function validTotal(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 function warningTier(usedUsd: number, limitUsd: number): 50 | 80 | null {
@@ -114,9 +115,9 @@ function warningTier(usedUsd: number, limitUsd: number): 50 | 80 | null {
  *  - user:    SMART_WRITER_LLM_USER_DAILY/MONTHLY_BUDGET_USD (per user,
  *             summed across all their projects; requires scope.userId)
  *
- * All limits unset → guard disabled. Query failure → fail open so a broken
- * guard can never block author saves; abuse remains bounded by the next
- * successful check. Crossing 50%/80% of any active limit is reported via
+ * All limits unset → guard disabled. Query failure → stop AI only; callers
+ * preserve manuscript/manual writes separately. One aggregate RPC avoids
+ * row response caps and separate page snapshots. Crossing 50%/80% is reported via
  * `warning` and logged for ops visibility.
  */
 export async function checkLLMBudget(
@@ -129,39 +130,99 @@ export async function checkLLMBudget(
     typeof scope === "string" ? { projectId: scope, userId: null } : scope;
 
   const projectActive = limits.dailyUsd !== null || limits.monthlyUsd !== null;
-  const userActive =
-    Boolean(userId) &&
-    ((limits.userDailyUsd ?? null) !== null ||
-      (limits.userMonthlyUsd ?? null) !== null);
-
-  if (!projectActive && !userActive) {
+  const userConfigured = (limits.userDailyUsd ?? null) !== null ||
+    (limits.userMonthlyUsd ?? null) !== null;
+  if (!projectActive && !userConfigured) {
     return { allowed: true, reason: null, warning: null };
   }
+  if (userConfigured && !userId) return unavailable();
+  if (!Number.isFinite(now.getTime())) return unavailable();
 
-  const monthStart = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)
-  );
-  const dayStart = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
-  );
-  const dayStartIso = dayStart.toISOString();
-
-  const projectWindowStart = limits.monthlyUsd !== null ? monthStart : dayStart;
-  const userWindowStart =
-    (limits.userMonthlyUsd ?? null) !== null ? monthStart : dayStart;
-
-  const [projectSums, userSums] = await Promise.all([
-    projectActive
-      ? sumUsage(supabase, "project_id", projectId, projectWindowStart, dayStartIso)
-      : Promise.resolve(null),
-    userActive
-      ? sumUsage(supabase, "user_id", userId as string, userWindowStart, dayStartIso)
-      : Promise.resolve(null),
-  ]);
-
-  if (projectSums?.scanCapped || userSums?.scanCapped) {
-    return { allowed: false, reason: "scan_cap", warning: null };
+  const totals = await readLLMUsageTotals(supabase, { projectId, userId }, {
+    projectActive,
+    projectMonthly: limits.monthlyUsd !== null,
+    userActive: userConfigured,
+    userMonthly: (limits.userMonthlyUsd ?? null) !== null,
+  }, now);
+  if (!totals) return unavailable();
+  if (totals.project_unknown_cost_count > 0 || totals.user_unknown_cost_count > 0) {
+    // Unknown cost is not proof of free usage. Preserve current policy while
+    // exposing missing pricing for operator investigation (no manuscript data).
+    console.warn("[LLMBudget] usage has unknown costs:", {
+      projectId, project: totals.project_unknown_cost_count,
+      user: totals.user_unknown_cost_count,
+    });
   }
+  const decision = evaluateLLMBudget(totals, limits);
+  const { warning } = decision;
+
+  if (warning) {
+    console.warn(
+      `[LLMBudget] ${warning.level}% of ${warning.axis} ${warning.window} budget used` +
+        ` (project=${projectId}${userId ? ` user=${userId}` : ""}:` +
+        ` $${warning.usedUsd.toFixed(4)} of $${warning.limitUsd})`
+    );
+  }
+
+  return decision;
+}
+
+function validUsageTotals(totals: LLMUsageTotals | null): totals is LLMUsageTotals {
+  return typeof totals === "object" && totals !== null && totals.authorized === true && [
+    totals.project_day_usd, totals.project_month_usd,
+    totals.user_day_usd, totals.user_month_usd,
+    totals.project_unknown_cost_count, totals.user_unknown_cost_count,
+  ].every(validTotal);
+}
+
+/** Read one authorized UTC aggregate without applying budget policy. */
+export async function readLLMUsageTotals(
+  supabase: SupabaseClient<Database>,
+  scope: LLMBudgetScope,
+  options: { projectActive: boolean; projectMonthly: boolean; userActive: boolean; userMonthly: boolean },
+  now: Date
+): Promise<LLMUsageTotals | null> {
+  if (!Number.isFinite(now.getTime()) || (options.userActive && !scope.userId)) return null;
+  try {
+    const { data, error } = await supabase.rpc("get_llm_usage_totals", {
+      p_project_id: scope.projectId,
+      p_user_id: scope.userId ?? null,
+      p_project_active: options.projectActive,
+      p_project_monthly: options.projectMonthly,
+      p_user_active: options.userActive,
+      p_user_monthly: options.userMonthly,
+      p_as_of: now.toISOString(),
+    });
+    if (error) {
+      console.error("[LLMBudget] usage aggregate failed:", error.message);
+      return null;
+    }
+    if (!Array.isArray(data) || data.length !== 1 || !validUsageTotals(data[0])) return null;
+    return data[0];
+  } catch (error) {
+    console.error("[LLMBudget] usage aggregate unavailable:",
+      error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+/** Pure policy shared by the paid guard and read-only operations display.
+ * Unknown costs remain informational and never create an inferred charge.
+ */
+export function evaluateLLMBudget(
+  totals: LLMUsageTotals | null,
+  limits: LLMBudgetLimits
+): LLMBudgetDecision {
+  const projectActive = limits.dailyUsd !== null || limits.monthlyUsd !== null;
+  const userConfigured = (limits.userDailyUsd ?? null) !== null ||
+    (limits.userMonthlyUsd ?? null) !== null;
+  if (!projectActive && !userConfigured) return { allowed: true, reason: null, warning: null };
+  if (!validUsageTotals(totals)) return unavailable();
+
+  const projectSums = projectActive
+    ? { dayUsd: totals.project_day_usd, monthUsd: totals.project_month_usd } : null;
+  const userSums = userConfigured
+    ? { dayUsd: totals.user_day_usd, monthUsd: totals.user_month_usd } : null;
 
   // Axis checks — project first (existing precedence), monthly before daily.
   const checks: Array<{
@@ -220,14 +281,6 @@ export async function checkLLMBudget(
         limitUsd: check.limitUsd,
       };
     }
-  }
-
-  if (warning) {
-    console.warn(
-      `[LLMBudget] ${warning.level}% of ${warning.axis} ${warning.window} budget used` +
-        ` (project=${projectId}${userId ? ` user=${userId}` : ""}:` +
-        ` $${warning.usedUsd.toFixed(4)} of $${warning.limitUsd})`
-    );
   }
 
   return { allowed: true, reason: null, warning };

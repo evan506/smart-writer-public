@@ -60,13 +60,13 @@ describe("createDistillationDeps", () => {
   describe("loadApprovedEntityNames", () => {
     it("returns entity names scoped to the project", async () => {
       const { client, calls } = createSupabaseMock({
-        entities: [{ data: [{ name: "카이" }, { name: "리엔" }], error: null }],
+        entities: [{ data: [{ name: "리겔" }, { name: "리엔" }], error: null }],
       });
       const deps = createDistillationDeps(client as never);
 
       const names = await deps.loadApprovedEntityNames(projectId);
 
-      expect(names).toEqual(["카이", "리엔"]);
+      expect(names).toEqual(["리겔", "리엔"]);
       const call = calls.find((c) => c.table === "entities");
       expect(call!.filters).toEqual(
         expect.arrayContaining([

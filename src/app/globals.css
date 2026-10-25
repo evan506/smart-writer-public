@@ -396,3 +396,16 @@
 .animate-sw-fade-slide-up {
   animation: var(--sw-anim-fade-slide-up);
 }
+
+/* Narrow screens keep readable form text and room for the home indicator. */
+@media (max-width: 767px) {
+  input:not([type="checkbox"]):not([type="radio"]), textarea, select {
+    font-size: 16px;
+  }
+  .write-bottom-bar { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+  [data-mobile="true"] [data-sidebar="menu-button"],
+  .codex-btn, .codex-chip { min-height: 44px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .codex-chip-review, .codex-pulse-dot { animation: none !important; }
+}

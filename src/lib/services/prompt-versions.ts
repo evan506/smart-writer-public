@@ -6,11 +6,11 @@
 // segmentable by prompt revision.
 
 export const PROMPT_TEMPLATE_VERSIONS = {
-  "entity_extraction.stage1_nouns": "v2",
+  "entity_extraction.stage1_nouns": "v1-public-20261025",
   "entity_extraction.stage2_classify": "v1",
   "entity_extraction.stage3_relations": "v1",
   "analysis.chapter": "v1",
-  canon_qna: "v1",
+  canon_qna: "v2",
   "extraction_memory.distillation": "v1",
 } as const;
 

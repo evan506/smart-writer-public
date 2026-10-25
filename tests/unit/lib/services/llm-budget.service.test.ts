@@ -1,35 +1,25 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  checkLLMBudget,
-  getLLMBudgetLimits,
-  type LLMBudgetLimits,
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { checkLLMBudget, createLLMBudgetGuard, getLLMBudgetLimits,
+  LLMBudgetError, getLLMBudgetMessage, readLLMUsageTotals, evaluateLLMBudget,
+  type LLMBudgetLimits, type LLMUsageTotals
 } from "@/lib/services/llm-budget.service";
-import { createSupabaseMock } from "../../../helpers/supabase-mock";
 
 const projectId = "11111111-1111-4111-8111-111111111111";
 const userId = "22222222-2222-4222-8222-222222222222";
-
-type Row = { cost_usd: number | null; created_at: string | null };
-type QueryResult = { data: Row[] | null; error: { message: string } | null };
-
-// Minimal chainable Supabase mock covering the exact chain used by
-// checkLLMBudget: .from().select().eq().gte().limit() -> QueryResult.
-// Kept for the string-scope regression tests (single-axis, single query).
-function makeClient(result: QueryResult) {
-  const promise = Promise.resolve(result);
-  const chain = {
-    select: vi.fn(() => chain),
-    eq: vi.fn(() => chain),
-    gte: vi.fn(() => chain),
-    limit: vi.fn(() => promise),
-  };
-  const from = vi.fn(() => chain);
-  return { from: from as unknown, client: { from } };
+const now = new Date("2026-06-15T12:00:00.000Z");
+const empty = {
+  authorized: true, project_day_usd: 0, project_month_usd: 0,
+  user_day_usd: 0, user_month_usd: 0,
+  project_unknown_cost_count: 0, user_unknown_cost_count: 0,
+};
+const limits: LLMBudgetLimits = {
+  dailyUsd: 10, monthlyUsd: 50, userDailyUsd: 20, userMonthlyUsd: 100,
+};
+function makeClient(overrides: Partial<typeof empty> = {}) {
+  const rpc = vi.fn().mockResolvedValue({ data: [{ ...empty, ...overrides }], error: null });
+  return { rpc };
 }
-
-function row(cost: number, createdAt: string): Row {
-  return { cost_usd: cost, created_at: createdAt };
-}
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
 describe("getLLMBudgetLimits", () => {
   const ORIGINAL_DAILY = process.env.SMART_WRITER_LLM_DAILY_BUDGET_USD;
@@ -101,438 +91,205 @@ describe("getLLMBudgetLimits", () => {
   });
 });
 
-describe("checkLLMBudget", () => {
-  const now = new Date("2026-06-15T12:00:00.000Z");
-
-  beforeEach(() => {
-    vi.clearAllMocks();
+describe("single-snapshot budget aggregate", () => {
+  it("does not query when all limits are disabled", async () => {
+    const client = makeClient();
+    expect(await checkLLMBudget(client as never, projectId,
+      { dailyUsd: null, monthlyUsd: null }, now))
+      .toEqual({ allowed: true, reason: null, warning: null });
+    expect(client.rpc).not.toHaveBeenCalled();
   });
 
-  describe("string scope (backward-compat regression)", () => {
-    it("skips the query and allows when both limits are unset", async () => {
-      const { client, from } = makeClient({ data: [], error: null });
-
-      const result = await checkLLMBudget(
-        client as never,
-        projectId,
-        { dailyUsd: null, monthlyUsd: null },
-        now
-      );
-
-      expect(result).toEqual({ allowed: true, reason: null, warning: null });
-      expect(from).not.toHaveBeenCalled();
-    });
-
-    it("allows when usage is under both limits", async () => {
-      const { client } = makeClient({
-        data: [
-          { cost_usd: 1, created_at: "2026-06-15T01:00:00.000Z" },
-          { cost_usd: 2, created_at: "2026-06-10T01:00:00.000Z" },
-        ],
-        error: null,
-      });
-      const limits: LLMBudgetLimits = { dailyUsd: 10, monthlyUsd: 50 };
-
-      const result = await checkLLMBudget(client as never, projectId, limits, now);
-
-      expect(result).toEqual({ allowed: true, reason: null, warning: null });
-    });
-
-    it("blocks with reason 'monthly' when accumulated month cost meets/exceeds the monthly limit", async () => {
-      const { client } = makeClient({
-        data: [
-          { cost_usd: 3, created_at: "2026-06-01T01:00:00.000Z" },
-          { cost_usd: 3, created_at: "2026-06-05T01:00:00.000Z" },
-        ],
-        error: null,
-      });
-      const limits: LLMBudgetLimits = { dailyUsd: null, monthlyUsd: 5 };
-
-      const result = await checkLLMBudget(client as never, projectId, limits, now);
-
-      expect(result).toEqual({ allowed: false, reason: "monthly", warning: null });
-    });
-
-    it("blocks with reason 'daily' when today's rows meet/exceed the daily limit (earlier-month rows do not count)", async () => {
-      const { client } = makeClient({
-        data: [
-          // earlier in month: counts toward monthly total but not the day window
-          { cost_usd: 1, created_at: "2026-06-01T01:00:00.000Z" },
-          // today: pushes the day total over the daily limit
-          { cost_usd: 4, created_at: "2026-06-15T01:00:00.000Z" },
-        ],
-        error: null,
-      });
-      const limits: LLMBudgetLimits = { dailyUsd: 3, monthlyUsd: 100 };
-
-      const result = await checkLLMBudget(client as never, projectId, limits, now);
-
-      expect(result).toEqual({ allowed: false, reason: "daily", warning: null });
-    });
-
-    it("counts rows from earlier in the month toward the monthly total but excludes them from the daily total", async () => {
-      const { client } = makeClient({
-        data: [
-          // earlier-in-month row only: should NOT trip a daily limit on its own
-          { cost_usd: 10, created_at: "2026-06-01T01:00:00.000Z" },
-        ],
-        error: null,
-      });
-      // Daily limit alone would appear tripped if the row incorrectly counted
-      // toward "today"; monthly limit is generous so only daily would fire.
-      const limits: LLMBudgetLimits = { dailyUsd: 5, monthlyUsd: 1000 };
-
-      const result = await checkLLMBudget(client as never, projectId, limits, now);
-
-      expect(result).toEqual({ allowed: true, reason: null, warning: null });
-    });
-
-    it("fails open (allowed) when the usage query errors", async () => {
-      const { client } = makeClient({
-        data: null,
-        error: { message: "boom" },
-      });
-      const limits: LLMBudgetLimits = { dailyUsd: 1, monthlyUsd: 1 };
-
-      const result = await checkLLMBudget(client as never, projectId, limits, now);
-
-      expect(result).toEqual({ allowed: true, reason: null, warning: null });
-    });
-
-    it("blocks with reason 'scan_cap' when the row scan cap (10000) is hit", async () => {
-      const rows: Row[] = Array.from({ length: 10_000 }, () => ({
-        cost_usd: 0,
-        created_at: "2026-06-15T01:00:00.000Z",
-      }));
-      const { client } = makeClient({ data: rows, error: null });
-      const limits: LLMBudgetLimits = { dailyUsd: 1000, monthlyUsd: 1000 };
-
-      const result = await checkLLMBudget(client as never, projectId, limits, now);
-
-      expect(result).toEqual({ allowed: false, reason: "scan_cap", warning: null });
+  it("uses one RPC for all configured axes and a fixed UTC timestamp", async () => {
+    const client = makeClient();
+    expect((await checkLLMBudget(client as never, {projectId,userId}, limits, now)).allowed).toBe(true);
+    expect(client.rpc).toHaveBeenCalledExactlyOnceWith("get_llm_usage_totals", {
+      p_project_id: projectId, p_user_id: userId,
+      p_project_active: true, p_project_monthly: true,
+      p_user_active: true, p_user_monthly: true,
+      p_as_of: "2026-06-15T12:00:00.000Z",
     });
   });
 
-  describe("user axis (object scope)", () => {
-    it("blocks with reason 'user_daily' when the user's daily spend meets/exceeds the user daily limit", async () => {
-      const { client, calls } = createSupabaseMock({
-        llm_usage_logs: [{ data: [row(5, "2026-06-15T02:00:00.000Z")], error: null }],
-      });
-      const limits: LLMBudgetLimits = {
-        dailyUsd: null,
-        monthlyUsd: null,
-        userDailyUsd: 5,
-        userMonthlyUsd: null,
-      };
-
-      const result = await checkLLMBudget(
-        client as never,
-        { projectId, userId },
-        limits,
-        now
-      );
-
-      expect(result).toEqual({ allowed: false, reason: "user_daily", warning: null });
-      expect(calls).toHaveLength(1);
-      expect(calls[0]?.filters).toContainEqual({ method: "eq", args: ["user_id", userId] });
-    });
-
-    it("allows when the user's daily spend is under the user daily limit", async () => {
-      const { client } = createSupabaseMock({
-        llm_usage_logs: [{ data: [row(2, "2026-06-15T02:00:00.000Z")], error: null }],
-      });
-      const limits: LLMBudgetLimits = {
-        dailyUsd: null,
-        monthlyUsd: null,
-        userDailyUsd: 5,
-        userMonthlyUsd: null,
-      };
-
-      const result = await checkLLMBudget(
-        client as never,
-        { projectId, userId },
-        limits,
-        now
-      );
-
-      expect(result).toEqual({ allowed: true, reason: null, warning: null });
-    });
-
-    it("blocks with reason 'user_monthly' when the user's monthly spend meets/exceeds the user monthly limit", async () => {
-      const { client } = createSupabaseMock({
-        llm_usage_logs: [
-          {
-            data: [
-              row(12, "2026-06-02T02:00:00.000Z"),
-              row(8, "2026-06-15T02:00:00.000Z"),
-            ],
-            error: null,
-          },
-        ],
-      });
-      const limits: LLMBudgetLimits = {
-        dailyUsd: null,
-        monthlyUsd: null,
-        userDailyUsd: null,
-        userMonthlyUsd: 20,
-      };
-
-      const result = await checkLLMBudget(
-        client as never,
-        { projectId, userId },
-        limits,
-        now
-      );
-
-      expect(result).toEqual({ allowed: false, reason: "user_monthly", warning: null });
-    });
-
-    it("is inactive (and issues no query) when userId is absent from scope, even with user limits configured and project limits null", async () => {
-      const { client, calls } = createSupabaseMock({
-        llm_usage_logs: [{ data: [row(999, "2026-06-15T02:00:00.000Z")], error: null }],
-      });
-      const limits: LLMBudgetLimits = {
-        dailyUsd: null,
-        monthlyUsd: null,
-        userDailyUsd: 5,
-        userMonthlyUsd: null,
-      };
-
-      const result = await checkLLMBudget(client as never, { projectId }, limits, now);
-
-      expect(result).toEqual({ allowed: true, reason: null, warning: null });
-      expect(calls).toHaveLength(0);
-    });
+  it("does not scan the user axis when user limits are disabled", async () => {
+    const client = makeClient();
+    await checkLLMBudget(client as never, {projectId,userId}, {dailyUsd:1,monthlyUsd:null}, now);
+    expect(client.rpc.mock.calls[0][1]).toMatchObject({p_user_active:false,p_user_monthly:false,p_project_monthly:false});
   });
 
-  describe("both axes active", () => {
-    it("blocks with the user reason when the project is under limit but the user is over", async () => {
-      const limits: LLMBudgetLimits = {
-        dailyUsd: 100,
-        monthlyUsd: null,
-        userDailyUsd: 5,
-        userMonthlyUsd: null,
-      };
-      const { client, calls } = createSupabaseMock({
-        llm_usage_logs: [
-          { data: [row(10, "2026-06-15T02:00:00.000Z")], error: null }, // project: under
-          { data: [row(6, "2026-06-15T02:00:00.000Z")], error: null }, // user: over
-        ],
-      });
-
-      const result = await checkLLMBudget(
-        client as never,
-        { projectId, userId },
-        limits,
-        now
-      );
-
-      expect(result).toEqual({ allowed: false, reason: "user_daily", warning: null });
-      // Project query is built first (synchronously, before the user query)
-      // even though both resolve via Promise.all.
-      expect(calls[0]?.filters).toContainEqual({ method: "eq", args: ["project_id", projectId] });
-      expect(calls[1]?.filters).toContainEqual({ method: "eq", args: ["user_id", userId] });
-    });
-
-    it("blocks with the project reason (project checked first) when both project and user are over limit", async () => {
-      const limits: LLMBudgetLimits = {
-        dailyUsd: 5,
-        monthlyUsd: null,
-        userDailyUsd: 5,
-        userMonthlyUsd: null,
-      };
-      const { client, calls } = createSupabaseMock({
-        llm_usage_logs: [
-          { data: [row(6, "2026-06-15T02:00:00.000Z")], error: null }, // project: over
-          { data: [row(6, "2026-06-15T02:00:00.000Z")], error: null }, // user: also over
-        ],
-      });
-
-      const result = await checkLLMBudget(
-        client as never,
-        { projectId, userId },
-        limits,
-        now
-      );
-
-      expect(result).toEqual({ allowed: false, reason: "daily", warning: null });
-      expect(calls[0]?.filters).toContainEqual({ method: "eq", args: ["project_id", projectId] });
-      expect(calls[1]?.filters).toContainEqual({ method: "eq", args: ["user_id", userId] });
-    });
+  it("does not scan the project axis when only user limits are configured", async () => {
+    const client = makeClient();
+    await checkLLMBudget(client as never, {projectId,userId},
+      {dailyUsd:null,monthlyUsd:null,userDailyUsd:1}, now);
+    expect(client.rpc.mock.calls[0][1]).toMatchObject({p_project_active:false,p_user_active:true});
   });
 
-  describe("warning tiers", () => {
-    it("returns a level-50 warning (and logs it) when project daily usage is between 50% and 80% of the limit", async () => {
-      const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const limits: LLMBudgetLimits = {
-        dailyUsd: 10,
-        monthlyUsd: null,
-        userDailyUsd: null,
-        userMonthlyUsd: null,
-      };
-      const { client } = createSupabaseMock({
-        llm_usage_logs: [{ data: [row(6, "2026-06-15T02:00:00.000Z")], error: null }], // 60%
-      });
-
-      const result = await checkLLMBudget(client as never, projectId, limits, now);
-
-      expect(result.allowed).toBe(true);
-      expect(result.warning).toEqual({
-        level: 50,
-        axis: "project",
-        window: "daily",
-        usedUsd: 6,
-        limitUsd: 10,
-      });
-      expect(consoleWarn).toHaveBeenCalledTimes(1);
-    });
-
-    it("returns a level-80 warning when user monthly usage is at or above 80% of the limit", async () => {
-      const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const limits: LLMBudgetLimits = {
-        dailyUsd: null,
-        monthlyUsd: null,
-        userDailyUsd: null,
-        userMonthlyUsd: 20,
-      };
-      const { client } = createSupabaseMock({
-        llm_usage_logs: [{ data: [row(17, "2026-06-02T02:00:00.000Z")], error: null }], // 85%
-      });
-
-      const result = await checkLLMBudget(
-        client as never,
-        { projectId, userId },
-        limits,
-        now
-      );
-
-      expect(result.allowed).toBe(true);
-      expect(result.warning).toEqual({
-        level: 80,
-        axis: "user",
-        window: "monthly",
-        usedUsd: 17,
-        limitUsd: 20,
-      });
-      expect(consoleWarn).toHaveBeenCalledTimes(1);
-    });
-
-    it("surfaces the highest tier across axes when project is at 50-79% and user is at 80%+", async () => {
-      const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const limits: LLMBudgetLimits = {
-        dailyUsd: 10,
-        monthlyUsd: null,
-        userDailyUsd: 10,
-        userMonthlyUsd: null,
-      };
-      const { client } = createSupabaseMock({
-        llm_usage_logs: [
-          { data: [row(6, "2026-06-15T02:00:00.000Z")], error: null }, // project: 60% -> tier 50
-          { data: [row(9, "2026-06-15T02:00:00.000Z")], error: null }, // user: 90% -> tier 80
-        ],
-      });
-
-      const result = await checkLLMBudget(
-        client as never,
-        { projectId, userId },
-        limits,
-        now
-      );
-
-      expect(result.allowed).toBe(true);
-      expect(result.warning).toEqual({
-        level: 80,
-        axis: "user",
-        window: "daily",
-        usedUsd: 9,
-        limitUsd: 10,
-      });
-      expect(consoleWarn).toHaveBeenCalledTimes(1);
-    });
-
-    it("returns warning null and does not log when usage is under 50% on all active axes", async () => {
-      const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const limits: LLMBudgetLimits = {
-        dailyUsd: 10,
-        monthlyUsd: null,
-        userDailyUsd: 10,
-        userMonthlyUsd: null,
-      };
-      const { client } = createSupabaseMock({
-        llm_usage_logs: [
-          { data: [row(1, "2026-06-15T02:00:00.000Z")], error: null }, // project: 10%
-          { data: [row(1, "2026-06-15T02:00:00.000Z")], error: null }, // user: 10%
-        ],
-      });
-
-      const result = await checkLLMBudget(
-        client as never,
-        { projectId, userId },
-        limits,
-        now
-      );
-
-      expect(result).toEqual({ allowed: true, reason: null, warning: null });
-      expect(consoleWarn).not.toHaveBeenCalled();
-    });
+  it.each([
+    ["monthly", {project_month_usd:50}], ["daily", {project_day_usd:10}],
+    ["user_monthly", {user_month_usd:100}], ["user_daily", {user_day_usd:20}],
+  ])("blocks at the exact %s limit", async (reason, totals) => {
+    const client = makeClient(totals);
+    expect(await checkLLMBudget(client as never, {projectId,userId}, limits, now))
+      .toEqual({allowed:false,reason,warning:null});
   });
 
-  describe("scan cap on the user query", () => {
-    it("blocks with reason 'scan_cap' when the user axis hits the row scan cap even though the project axis is under limit", async () => {
-      const userRows: Row[] = Array.from({ length: 10_000 }, () => ({
-        cost_usd: 0,
-        created_at: "2026-06-15T02:00:00.000Z",
-      }));
-      const limits: LLMBudgetLimits = {
-        dailyUsd: 1000,
-        monthlyUsd: null,
-        userDailyUsd: 1000,
-        userMonthlyUsd: null,
-      };
-      const { client, calls } = createSupabaseMock({
-        llm_usage_logs: [
-          { data: [row(1, "2026-06-15T02:00:00.000Z")], error: null }, // project: fine
-          { data: userRows, error: null }, // user: hits the scan cap
-        ],
-      });
-
-      const result = await checkLLMBudget(
-        client as never,
-        { projectId, userId },
-        limits,
-        now
-      );
-
-      expect(result).toEqual({ allowed: false, reason: "scan_cap", warning: null });
-      expect(calls[1]?.filters).toContainEqual({ method: "eq", args: ["user_id", userId] });
-    });
+  it("preserves project-before-user and monthly-before-daily precedence", async () => {
+    const client = makeClient({project_day_usd:10,project_month_usd:50,user_month_usd:100});
+    expect((await checkLLMBudget(client as never,{projectId,userId},limits,now)).reason).toBe("monthly");
   });
 
-  describe("user-axis fail-open", () => {
-    it("allows (and logs via console.error, without throwing) when the user-axis query errors", async () => {
-      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
-      const limits: LLMBudgetLimits = {
-        dailyUsd: null,
-        monthlyUsd: null,
-        userDailyUsd: 5,
-        userMonthlyUsd: null,
-      };
-      const { client } = createSupabaseMock({
-        llm_usage_logs: [{ data: null, error: { message: "boom" } }],
-      });
+  it("accepts aggregate totals beyond the old row scan limit", async () => {
+    const client = makeClient({project_month_usd:15000});
+    expect((await checkLLMBudget(client as never,projectId,{dailyUsd:null,monthlyUsd:14000},now)).reason).toBe("monthly");
+  });
 
-      const result = await checkLLMBudget(
-        client as never,
-        { projectId, userId },
-        limits,
-        now
-      );
+  it.each([undefined,null,""])("stops when configured user limits have no user ID: %s", async (missing) => {
+    const client = makeClient();
+    expect((await checkLLMBudget(client as never,{projectId,userId:missing},limits,now)).reason).toBe("unavailable");
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
 
-      expect(result).toEqual({ allowed: true, reason: null, warning: null });
-      expect(consoleError).toHaveBeenCalledWith(
-        "[LLMBudget] usage query failed:",
-        "boom"
-      );
+  it("stops AI on RPC errors including missing migration", async () => {
+    vi.spyOn(console,"error").mockImplementation(()=>{});
+    const client = makeClient();
+    client.rpc.mockResolvedValue({data:null,error:{message:"function not found"}});
+    expect(await checkLLMBudget(client as never,{projectId,userId},limits,now))
+      .toEqual({allowed:false,reason:"unavailable",warning:null});
+  });
+
+  it("converts transport rejection into unavailable without throwing", async () => {
+    vi.spyOn(console,"error").mockImplementation(()=>{});
+    const client = makeClient(); client.rpc.mockRejectedValue(new Error("network"));
+    expect((await checkLLMBudget(client as never,{projectId,userId},limits,now)).reason).toBe("unavailable");
+  });
+
+  it.each([
+    {authorized:false}, {project_day_usd:-1}, {user_month_usd:NaN},
+    {project_month_usd:Infinity}, {project_unknown_cost_count:-1},
+  ])("rejects untrusted or malformed totals %j", async (totals) => {
+    expect((await checkLLMBudget(makeClient(totals) as never,{projectId,userId},limits,now)).reason).toBe("unavailable");
+  });
+
+  it.each([null,[],[empty,empty],[{...empty,project_day_usd:null}],
+    [{...empty,project_day_usd:"1"}]])("rejects missing or nonnumeric aggregate %j", async (data) => {
+    const client = makeClient();client.rpc.mockResolvedValue({data,error:null});
+    expect((await checkLLMBudget(client as never,{projectId,userId},limits,now)).reason).toBe("unavailable");
+  });
+
+  it("rejects invalid timestamps", async()=>{
+    const client=makeClient();
+    expect((await checkLLMBudget(client as never,{projectId,userId},limits,new Date(NaN))).reason).toBe("unavailable");
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
+  it("reports missing pricing separately without inventing a price", async () => {
+    const warn=vi.spyOn(console,"warn").mockImplementation(()=>{});
+    const client=makeClient({project_unknown_cost_count:1});
+    expect((await checkLLMBudget(client as never,{projectId,userId},limits,now)).allowed).toBe(true);
+    expect(warn).toHaveBeenCalledWith("[LLMBudget] usage has unknown costs:",expect.objectContaining({project:1}));
+  });
+
+  it.each([50,80])("reports the %s percent warning tier", async(level)=>{
+    vi.spyOn(console,"warn").mockImplementation(()=>{});
+    const client=makeClient({project_day_usd:level/10});
+    expect((await checkLLMBudget(client as never,{projectId,userId},limits,now)).warning)
+      .toMatchObject({level,axis:"project",window:"daily"});
+  });
+
+  it("chooses highest warning tier across axes",async()=>{
+    vi.spyOn(console,"warn").mockImplementation(()=>{});
+    const result=await checkLLMBudget(makeClient({project_day_usd:6,user_month_usd:85}) as never,{projectId,userId},limits,now);
+    expect(result.warning).toMatchObject({level:80,axis:"user",window:"monthly"});
+  });
+
+  it("guard prevents unattributed paid calls even when budgets are disabled",async()=>{
+    const client=makeClient();
+    await expect(createLLMBudgetGuard(client as never,{projectId})()).rejects.toBeInstanceOf(LLMBudgetError);
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
+  it("guard converts an exceeded budget into a typed error",async()=>{
+    vi.stubEnv("SMART_WRITER_LLM_DAILY_BUDGET_USD","1");
+    const check=createLLMBudgetGuard(makeClient({project_day_usd:2}) as never,{projectId,userId});
+    await expect(check()).rejects.toMatchObject({reason:"daily"});
+  });
+
+  it("gives distinct unavailable and over-budget messages",()=>{
+    expect(getLLMBudgetMessage({reason:"unavailable"})).toContain("확인할 수 없어");
+    expect(getLLMBudgetMessage({reason:"daily"})).toContain("도달했습니다");
+  });
+});
+
+
+describe("shared usage reader and budget evaluator", () => {
+  const full = { projectActive: true, projectMonthly: true, userActive: true, userMonthly: true };
+
+  it("reads all display axes even when no budget is configured", async () => {
+    const client = makeClient({ project_month_usd: 7, user_month_usd: 9 });
+    const totals = await readLLMUsageTotals(client as never, { projectId, userId }, full, now);
+    expect(totals).toMatchObject({ project_month_usd: 7, user_month_usd: 9 });
+    expect(client.rpc).toHaveBeenCalledExactlyOnceWith("get_llm_usage_totals", {
+      p_project_id: projectId, p_user_id: userId,
+      p_project_active: true, p_project_monthly: true,
+      p_user_active: true, p_user_monthly: true, p_as_of: now.toISOString(),
     });
+    expect(evaluateLLMBudget(totals, { dailyUsd: null, monthlyUsd: null }))
+      .toEqual({ allowed: true, reason: null, warning: null });
+  });
+
+  it("allows disabled budgets despite an unavailable aggregate", () => {
+    expect(evaluateLLMBudget(null, { dailyUsd: null, monthlyUsd: null }))
+      .toEqual({ allowed: true, reason: null, warning: null });
+    expect(evaluateLLMBudget(null, limits))
+      .toEqual({ allowed: false, reason: "unavailable", warning: null });
+  });
+
+  it.each([
+    { authorized: false }, { project_day_usd: -1 }, { user_month_usd: NaN },
+    { project_unknown_cost_count: Infinity },
+  ])("fails closed for invalid aggregate %j", (overrides) => {
+    expect(evaluateLLMBudget({ ...empty, ...overrides }, limits).reason).toBe("unavailable");
+  });
+
+  it.each([
+    { dailyUsd: null, monthlyUsd: null },
+    { dailyUsd: 10, monthlyUsd: null },
+    { dailyUsd: null, monthlyUsd: 50 },
+    { dailyUsd: null, monthlyUsd: null, userDailyUsd: 20 },
+    { dailyUsd: null, monthlyUsd: null, userMonthlyUsd: 100 },
+    limits,
+  ] satisfies LLMBudgetLimits[])("matches the paid guard for limits %j", async (configured) => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const amount of [0, 0.5, 0.8, 1, 1.2]) {
+      const totals: LLMUsageTotals = {
+        ...empty, project_day_usd: amount * 10, project_month_usd: amount * 50,
+        user_day_usd: amount * 20, user_month_usd: amount * 100,
+      };
+      expect(evaluateLLMBudget(totals, configured)).toEqual(
+        await checkLLMBudget(makeClient(totals) as never, { projectId, userId }, configured, now)
+      );
+    }
+  });
+
+  it("does not change a daily-only decision when the display includes older unknown costs", () => {
+    const configured = { dailyUsd: 10, monthlyUsd: null };
+    const display = { ...empty, project_day_usd: 6, project_month_usd: 100,
+      project_unknown_cost_count: 9, user_unknown_cost_count: 3 };
+    const guard = { ...empty, project_day_usd: 6 };
+    expect(evaluateLLMBudget(display, configured)).toEqual(evaluateLLMBudget(guard, configured));
+    expect(evaluateLLMBudget(display, configured).allowed).toBe(true);
+  });
+
+  it("does not query on invalid time or missing user for a requested user axis", async () => {
+    const client = makeClient();
+    expect(await readLLMUsageTotals(client as never, { projectId, userId }, full, new Date(NaN))).toBeNull();
+    expect(await readLLMUsageTotals(client as never, { projectId }, full, now)).toBeNull();
+    expect(client.rpc).not.toHaveBeenCalled();
+  });
+
+  it("keeps the pure evaluator free of logging", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    evaluateLLMBudget({ ...empty, project_day_usd: 8, project_unknown_cost_count: 3 }, limits);
+    expect(warn).not.toHaveBeenCalled();
   });
 });

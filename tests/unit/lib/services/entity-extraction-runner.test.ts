@@ -39,7 +39,7 @@ function extracted(
 const knownEntities: KnownEntity[] = [
   {
     id: "entity-1",
-    name: "리켈",
+    name: "세란",
     type: "CHARACTER",
     aliases: ["검은 늑대"],
   },
@@ -49,7 +49,7 @@ describe("entity extraction runner helpers", () => {
   it("builds normalized filter sets and stage 1 exclusions from loaded data", () => {
     const result = buildEntityExtractionRunnerSets({
       knownEntitiesData: {
-        names: ["리켈", "검은 늑대"],
+        names: ["세란", "검은 늑대"],
         typed: knownEntities,
       },
       suggestionNames: ["아린"],
@@ -60,12 +60,12 @@ describe("entity extraction runner helpers", () => {
     });
 
     expect(result.allExcludedTerms).toEqual(["길드", "마왕"]);
-    expect(result.confirmedNamesSet.has("리켈")).toBe(true);
+    expect(result.confirmedNamesSet.has("세란")).toBe(true);
     expect(result.confirmedNamesSet.has("검은늑대")).toBe(true);
     expect(result.excludedTermsSet.has("길드")).toBe(true);
     expect(result.genreExcludedSet.has("마왕")).toBe(true);
     expect(result.stage1ExcludeNames).toEqual([
-      "리켈",
+      "세란",
       "검은 늑대",
       "아린",
       "길드",
@@ -128,12 +128,12 @@ describe("entity extraction runner helpers", () => {
         classified({
           name: "리엔",
           type: "CHARACTER",
-          context_snippet: "리엔은 변방 마을의 영주로 불렸다.",
+          context_snippet: "리엔는 변방 마을의 영주로 불렸다.",
           facts: [
             {
               fact_type: "ROLE",
               value: "변방 마을의 영주",
-              evidence: "리엔은 변방 마을의 영주로 불렸다.",
+              evidence: "리엔는 변방 마을의 영주로 불렸다.",
               confidence: 0.8,
             },
             {
@@ -145,20 +145,20 @@ describe("entity extraction runner helpers", () => {
             {
               fact_type: "UNKNOWN",
               value: "잘못된 타입",
-              evidence: "리엔은 변방 마을의 영주로 불렸다.",
+              evidence: "리엔는 변방 마을의 영주로 불렸다.",
               confidence: 0.8,
             },
           ],
         }),
       ],
-      "리엔은 변방 마을의 영주로 불렸다."
+      "리엔는 변방 마을의 영주로 불렸다."
     );
 
     expect(result[0].facts).toEqual([
       {
         fact_type: "ROLE",
         value: "변방 마을의 영주",
-        evidence: "리엔은 변방 마을의 영주로 불렸다.",
+        evidence: "리엔는 변방 마을의 영주로 불렸다.",
         confidence: 0.8,
       },
     ]);
@@ -181,20 +181,20 @@ describe("entity extraction runner helpers", () => {
             {
               fact_type: "ROLE",
               value: "변방 마을의 영주",
-              evidence: "리엔은 변방 마을의 영주로 불렸다.",
+              evidence: "리엔는 변방 마을의 영주로 불렸다.",
               confidence: 0.8,
             },
           ],
         }),
       ],
-      "'지랄은' 웃는 얼굴로 쌍욕을 지껄인 리엔 하르트 리엔은 변방 마을의 영주로 불렸다."
+      "'지랄은' 웃는 얼굴로 쌍욕을 지껄인 리엔 하르트 리엔는 변방 마을의 영주로 불렸다."
     );
 
     expect(result[0].facts).toEqual([
       {
         fact_type: "ROLE",
         value: "변방 마을의 영주",
-        evidence: "리엔은 변방 마을의 영주로 불렸다.",
+        evidence: "리엔는 변방 마을의 영주로 불렸다.",
         confidence: 0.8,
       },
     ]);
@@ -206,18 +206,18 @@ describe("entity extraction runner helpers", () => {
         classified({
           name: "리엔",
           type: "CHARACTER",
-          context_snippet: "리엔은 왕에게 핀잔을 듣고 있었다.",
+          context_snippet: "리엔는 왕에게 핀잔을 듣고 있었다.",
           facts: [
             {
               fact_type: "ROLE",
               value: "왕과 대화하는 인물",
-              evidence: "리엔은 왕에게 핀잔을 듣고 있었다.",
+              evidence: "리엔는 왕에게 핀잔을 듣고 있었다.",
               confidence: 0.8,
             },
             {
               fact_type: "ROLE",
               value: "대화 참여자",
-              evidence: "베릴의 의문에 리켈이 호통을 치며 정정했다.",
+              evidence: "베릴의 의문에 세란이 호통을 치며 정정했다.",
               confidence: 0.8,
             },
             {
@@ -241,7 +241,7 @@ describe("entity extraction runner helpers", () => {
             {
               fact_type: "ROLE",
               value: "화자에게 기억에 남는 인물",
-              evidence: "리켈이 지껄인 개소리가 마음에 걸린 것",
+              evidence: "세란이 지껄인 개소리가 마음에 걸린 것",
               confidence: 0.8,
             },
             {
@@ -259,7 +259,7 @@ describe("entity extraction runner helpers", () => {
           ],
         }),
       ],
-      "리엔은 왕에게 핀잔을 듣고 있었다. 전방의 아무 마을에나 가서 영주나 하라."
+      "리엔는 왕에게 핀잔을 듣고 있었다. 전방의 아무 마을에나 가서 영주나 하라."
     );
 
     expect(result[0].facts).toEqual([
@@ -356,20 +356,20 @@ describe("entity extraction runner helpers", () => {
           ],
         }),
         classified({
-          name: "리켈",
+          name: "세란",
           type: "CHARACTER",
-          context_snippet: "언젠가 리켈이 지껄인 개소리가 마음에 걸린 것이다.",
+          context_snippet: "언젠가 세란이 지껄인 개소리가 마음에 걸린 것이다.",
           facts: [
             {
               fact_type: "DESCRIPTION_TEXT",
               value: "말이 많은 인물",
-              evidence: "리켈이 지껄인 개소리",
+              evidence: "세란이 지껄인 개소리",
               confidence: 0.7,
             },
           ],
         }),
       ],
-      "엘크 집에서 파티할거니까 꼭 와! 한명은 마족처럼 귀에 나뭇가지를 끼웠고 언젠가 리켈이 지껄인 개소리가 마음에 걸린 것이다."
+      "엘크 집에서 파티할거니까 꼭 와! 한명은 마족처럼 귀에 나뭇가지를 끼웠고 언젠가 세란이 지껄인 개소리가 마음에 걸린 것이다."
     );
 
     expect(result[0].facts).toEqual([]);
@@ -377,19 +377,19 @@ describe("entity extraction runner helpers", () => {
     expect(result[2].facts).toEqual([]);
   });
 
-  it("keeps high-confidence alias references in pending review instead of auto-confirming them", () => {
+  it("keeps every entity in review, including high confidence and aliases", () => {
     const auto = extracted({ name: "아린", confidence: 0.9 });
     const pending = extracted({ name: "리오", confidence: 0.7 });
     const lowAlias = extracted({
       name: "검은 늑대",
       sub_type: "alias_ref",
-      alias_of: "리켈",
+      alias_of: "세란",
       confidence: 0.6,
     });
     const highAlias = extracted({
       name: "늑대 경",
       sub_type: "alias_ref",
-      alias_of: "리켈",
+      alias_of: "세란",
       confidence: 0.95,
     });
 
@@ -400,9 +400,9 @@ describe("entity extraction runner helpers", () => {
       highAlias,
     ]);
 
-    expect(result.toAutoConfirm).toEqual([auto]);
-    expect(result.toPending).toEqual([pending, lowAlias]);
+    expect(result.toAutoConfirm).toEqual([]);
+    expect(result.toPending).toEqual([auto, pending, lowAlias, highAlias]);
     expect(result.aliasRefs).toEqual([lowAlias, highAlias]);
-    expect(result.pendingCandidates).toEqual([pending, lowAlias, highAlias]);
+    expect(result.pendingCandidates).toEqual([auto, pending, lowAlias, highAlias]);
   });
 });

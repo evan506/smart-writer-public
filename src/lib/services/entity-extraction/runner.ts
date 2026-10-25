@@ -126,19 +126,12 @@ export function partitionEntityWriteCandidates(
   aliasRefs: ExtractedEntity[];
   pendingCandidates: ExtractedEntity[];
 } {
-  const toAutoConfirm = classifiedEntities.filter(
-    (entity) => entity.confidence >= 0.8 && entity.sub_type !== "alias_ref"
-  );
-  const toPending = classifiedEntities.filter((entity) => entity.confidence < 0.8);
+  // Confidence is a model estimate, not writer approval.
   const aliasRefs = classifiedEntities.filter((entity) => entity.sub_type === "alias_ref");
-
   return {
-    toAutoConfirm,
-    toPending,
+    toAutoConfirm: [],
+    toPending: classifiedEntities,
     aliasRefs,
-    pendingCandidates: [
-      ...toPending,
-      ...aliasRefs.filter((aliasRef) => !toPending.includes(aliasRef)),
-    ],
+    pendingCandidates: classifiedEntities,
   };
 }

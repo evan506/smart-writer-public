@@ -2,7 +2,7 @@
 --
 -- Reverts every policy back to its EXACT pre-migration predicate: bare
 -- `auth.uid()` (per-row re-evaluation). Restores the live-DB form captured via
--- catalog introspection at authoring time (project REDACTED-SUPABASE-PROJECT-REF,
+-- catalog introspection at authoring time (project jxcargpzpifpmwtpjhmd,
 -- 2026-05-16). Name / command / roles / permissive and the presence/absence of
 -- WITH CHECK are all preserved (ALTER POLICY, never DROP/CREATE).
 --

@@ -22,7 +22,7 @@ function entity(overrides: Partial<ExtractedEntity> & Pick<ExtractedEntity, "nam
 const knownEntities: KnownEntity[] = [
   {
     id: "entity-1",
-    name: "리켈",
+    name: "세란",
     type: "CHARACTER",
     aliases: ["검은 늑대"],
   },
@@ -70,18 +70,18 @@ describe("entity extraction suggestion builder", () => {
     });
   });
 
-  it("marks canonical-name matches as UPDATE suggestions", () => {
+  it("routes normalized canonical-name matches to the saved target", () => {
     const knownNames = normalizedNameSet(knownEntities.map((knownEntity) => knownEntity.name));
 
     expect(
       decideEntitySuggestionAction(
-        entity({ name: " 리 켈 ", type: "CHARACTER" }),
+        entity({ name: " 세 란 ", type: "CHARACTER" }),
         knownNames,
         knownEntities
       )
     ).toEqual({
-      suggestedAction: "UPDATE",
-      matchedEntityId: null,
+      suggestedAction: "MERGE",
+      matchedEntityId: "entity-1",
     });
   });
 
@@ -102,7 +102,7 @@ describe("entity extraction suggestion builder", () => {
     });
   });
 
-  it("skips alias references when no merge target can be resolved", () => {
+  it("keeps unresolved alias references for target selection", () => {
     const inserts = buildEntitySuggestionInserts(
       [
         entity({
@@ -117,15 +117,36 @@ describe("entity extraction suggestion builder", () => {
       buildContext
     );
 
-    expect(inserts).toHaveLength(1);
+    expect(inserts).toHaveLength(2);
     expect(inserts[0]).toMatchObject({
+      name: "은빛 검객",
+      status: "PENDING",
+      suggested_action: "MERGE",
+      matched_entity_id: null,
+    });
+    expect(inserts[1]).toMatchObject({
       name: "아린",
       suggested_action: "CREATE",
     });
   });
 
+  it("keeps exact canonical updates pending and approved aliases targeted", () => {
+    expect(buildEntitySuggestionInsert(entity({ name: "세란", confidence: 0.99 }), buildContext))
+      .toMatchObject({ status: "PENDING", suggested_action: "UPDATE", matched_entity_id: "entity-1" });
+    expect(buildEntitySuggestionInsert(entity({ name: "검은늑대", confidence: 0.99 }), buildContext))
+      .toMatchObject({ status: "PENDING", suggested_action: "MERGE", matched_entity_id: "entity-1" });
+  });
+
+  it("requires target selection when approved names or aliases are ambiguous", () => {
+    const ambiguous = [...knownEntities, { id: "entity-3", name: "세 란", type: "CHARACTER", aliases: ["검은 늑대"] }];
+    expect(findKnownEntityIdByName(ambiguous, "세란")).toBeNull();
+    expect(findKnownEntityIdByName(ambiguous, "검은늑대")).toBeNull();
+    expect(buildEntitySuggestionInsert(entity({ name: "검은 늑대" }), { ...buildContext, knownEntities: ambiguous }))
+      .toMatchObject({ status: "PENDING", suggested_action: "MERGE", matched_entity_id: null });
+  });
+
   it("resolves merge targets by canonical name or existing alias", () => {
-    expect(findKnownEntityIdByName(knownEntities, "리 켈")).toBe("entity-1");
+    expect(findKnownEntityIdByName(knownEntities, "세 란")).toBe("entity-1");
     expect(findKnownEntityIdByName(knownEntities, " 검은늑대 ")).toBe("entity-1");
     expect(findKnownEntityIdByName(knownEntities, "")).toBeNull();
   });

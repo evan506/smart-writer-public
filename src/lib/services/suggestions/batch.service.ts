@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createLLMUsageLogger } from "../llm-usage-logger.service";
+import { LLMBudgetError } from "../llm-budget.service";
+import { createBudgetedEmbeddingOptions } from "../budgeted-embedding";
 import { embedText } from "../embedding.service";
 import {
   buildEntityBatchConfirmationPlan,
@@ -28,7 +29,8 @@ export type EntitySuggestionBatchResult = {
 export async function confirmEntitySuggestionBatch(
   supabase: SupabaseClient,
   suggestions: EntitySuggestionBatchRow[],
-  projectId: string
+  projectId: string,
+  userId?: string | null
 ): Promise<EntitySuggestionBatchResult> {
   const skippedMerge = suggestions.filter((suggestion) => suggestion.suggested_action === "MERGE").length;
   const confirmableCount = suggestions.length - skippedMerge;
@@ -81,21 +83,22 @@ export async function confirmEntitySuggestionBatch(
     }
 
     after(async () => {
-      const bgSupabase = await createClient();
-      await Promise.all(
-        (inserted ?? []).map(async (entity) => {
+      try {
+        const bgSupabase = await createClient();
+        // Keep one logging state across the batch so a failed cost write stops later calls.
+        const embedOptions = createBudgetedEmbeddingOptions(bgSupabase, {
+          projectId,
+          userId,
+          feature: "embedding",
+          promptTemplateKey: "suggestions.entity_embedding",
+          promptTemplateVersion: "v1",
+        });
+        for (const entity of inserted ?? []) {
           const aliases = Array.isArray(entity.aliases) ? (entity.aliases as string[]) : [];
           const embeddingText = [entity.name, entity.summary, ...aliases]
             .filter(Boolean)
             .join(" ");
-          const embedding = await embedText(embeddingText, {
-            onComplete: createLLMUsageLogger(bgSupabase, {
-              projectId,
-              feature: "embedding",
-              promptTemplateKey: "suggestions.entity_embedding",
-              promptTemplateVersion: "v1",
-            }),
-          });
+          const embedding = await embedText(embeddingText, embedOptions);
           const { error: embeddingError } = await bgSupabase
             .from("entities")
             .update({ embedding: JSON.stringify(embedding) })
@@ -103,8 +106,14 @@ export async function confirmEntitySuggestionBatch(
           if (embeddingError) {
             console.error("[Suggestions] embedding update error:", embeddingError.message);
           }
-        })
-      );
+        }
+      } catch (error) {
+        if (error instanceof LLMBudgetError) {
+          console.warn("[AI] optional entity embedding skipped:", error.message);
+        } else {
+          console.error("[AI] optional entity embedding stopped:", error);
+        }
+      }
     });
   }
 

@@ -7,6 +7,11 @@ import {
 const afterMock = vi.hoisted(() => vi.fn());
 const createClientMock = vi.hoisted(() => vi.fn());
 const embedTextMock = vi.hoisted(() => vi.fn());
+const budgetedOptionsMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/services/budgeted-embedding", () => ({
+  createBudgetedEmbeddingOptions: budgetedOptionsMock,
+}));
 
 vi.mock("next/server", () => ({
   after: afterMock,
@@ -77,6 +82,7 @@ function createAliasClient({
 describe("suggestions alias service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    budgetedOptionsMock.mockReset().mockReturnValue({ onComplete: vi.fn() });
     embedTextMock.mockResolvedValue([0.4, 0.5, 0.6]);
   });
 
@@ -201,5 +207,21 @@ describe("suggestions alias service", () => {
     ).resolves.toEqual({ error: "suggestion failed" });
 
     expect(afterMock).not.toHaveBeenCalled();
+  });
+  it("preserves manual confirmation and forwards owner when optional embedding is blocked", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      budgetedOptionsMock.mockImplementation(() => { throw new Error("budget blocked"); });
+      const { client } = createAliasClient();
+const bg = createAliasClient();
+createClientMock.mockResolvedValue(bg.client);
+const result = await confirmSuggestionAlias(client as never, { id: "suggestion-1", name: "흑기사", aliases: [] }, { id: "entity-1", name: "리엔", summary: null, aliases: [] }, "project-1", "owner-1");
+      expect(result.error).toBeNull();
+      await expect(afterMock.mock.calls[0][0]()).resolves.toBeUndefined();
+      expect(budgetedOptionsMock).toHaveBeenCalledTimes(1);
+      expect(budgetedOptionsMock).toHaveBeenCalledWith(bg.client, expect.objectContaining({ projectId: "project-1", userId: "owner-1" }));
+      expect(embedTextMock).not.toHaveBeenCalled();
+      expect(bg.operations).toHaveLength(0);
+    } finally { log.mockRestore(); }
   });
 });

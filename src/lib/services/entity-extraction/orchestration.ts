@@ -5,7 +5,7 @@ import type {
   ExtractedRelation,
   KnownEntity,
 } from "../prompt-templates";
-import { normalizedNameSet } from "../entity-extraction-utils";
+import { normalizeEntityName, normalizedNameSet } from "../entity-extraction-utils";
 import {
   buildEntityExtractionRunnerSets,
   normalizeClassifiedEntitiesForRunner,
@@ -49,11 +49,6 @@ export interface EntityExtractionOrchestrationDeps {
     confirmedEntities: KnownEntity[],
     guidanceBlock: string
   ): Promise<ClassifiedEntity[]>;
-  autoConfirmEntity(
-    entity: ExtractedEntity,
-    projectId: string,
-    chapterId: string
-  ): Promise<string | null>;
   upsertEntitySuggestions(inserts: EntitySuggestionInsert[]): Promise<number>;
   loadEntitySuggestionRefs(input: {
     projectId: string;
@@ -77,9 +72,7 @@ export interface EntityExtractionOrchestrationDeps {
       { id: string; matched_entity_id: string | null }
     >;
     knownEntities: KnownEntity[];
-    autoConfirmedEntityIds: Map<string, string>;
   }): Promise<number>;
-  mergeSubstringEntities(projectId: string): Promise<void>;
   stage3ExtractRelations(
     confirmedEntities: KnownEntity[],
     chapterContent: string,
@@ -92,9 +85,9 @@ export interface EntityExtractionOrchestrationDeps {
     projectId: string,
     chapterId: string,
     relations: ExtractedRelation[],
-    validEntityNames: Set<string>
+    validEntityNames: Set<string>,
+    analysisEntities: KnownEntity[]
   ): Promise<number>;
-  recalculateImportance(projectId: string): Promise<void>;
 }
 
 export interface EntityExtractionOrchestrationInput {
@@ -200,18 +193,7 @@ export async function runEntityExtractionOrchestration(
     classifiedEntities = normalizeClassifiedEntitiesForRunner(classified, content);
   }
 
-  const { toAutoConfirm, pendingCandidates } =
-    partitionEntityWriteCandidates(classifiedEntities);
-
-  let autoConfirmedCount = 0;
-  const autoConfirmedEntityIds = new Map<string, string>();
-  for (const entity of toAutoConfirm) {
-    const entityId = await deps.autoConfirmEntity(entity, projectId, chapterId);
-    if (entityId) {
-      autoConfirmedCount++;
-      autoConfirmedEntityIds.set(entity.name, entityId);
-    }
-  }
+  const { pendingCandidates } = partitionEntityWriteCandidates(classifiedEntities);
 
   let suggestionCount = 0;
   let entitySuggestionRefs = new Map<
@@ -220,15 +202,10 @@ export async function runEntityExtractionOrchestration(
   >();
   const now = new Date().toISOString();
   if (pendingCandidates.length > 0) {
-    const latestKnownEntitiesData =
-      autoConfirmedCount > 0
-        ? await deps.getKnownEntitiesData(projectId)
-        : knownEntitiesData;
-
     const inserts = buildEntitySuggestionInserts(pendingCandidates, {
       projectId,
       chapterId,
-      knownEntities: latestKnownEntitiesData.typed,
+      knownEntities: knownEntitiesData.typed,
       updatedAt: now,
     });
 
@@ -242,28 +219,26 @@ export async function runEntityExtractionOrchestration(
     }
   }
 
-  const latestKnownEntitiesForFacts =
-    autoConfirmedCount > 0 ? await deps.getKnownEntitiesData(projectId) : knownEntitiesData;
   const factSuggestionCount = await deps.insertFactSuggestions({
     projectId,
     chapterId,
     entities: classifiedEntities,
     entitySuggestionRefs,
-    knownEntities: latestKnownEntitiesForFacts.typed,
-    autoConfirmedEntityIds,
+    knownEntities: knownEntitiesData.typed,
   });
 
-  if (autoConfirmedCount > 0) {
-    console.log(
-      `[EntityExtraction] auto-confirmed ${autoConfirmedCount} entities`
-    );
+  // Pending candidates are analysis references only: never give them canon IDs or
+  // promote AI-proposed aliases. Saved identities/types retain precedence.
+  const analysisEntities = [...knownEntitiesData.typed];
+  const knownNames = normalizedNameSet(knownEntitiesData.names);
+  for (const entity of classifiedEntities) {
+    if (!knownNames.has(normalizeEntityName(entity.name))) {
+      analysisEntities.push({ name: entity.name, type: entity.type });
+      knownNames.add(normalizeEntityName(entity.name));
+    }
   }
-
-  await deps.mergeSubstringEntities(projectId);
-
-  const allConfirmed = await deps.getKnownEntitiesData(projectId);
   const relations = await deps.stage3ExtractRelations(
-    allConfirmed.typed,
+    analysisEntities,
     content,
     existingRelations
   );
@@ -284,7 +259,8 @@ export async function runEntityExtractionOrchestration(
       projectId,
       chapterId,
       mergedRelations,
-      validNames
+      validNames,
+      analysisEntities
     );
   }
 
@@ -293,10 +269,6 @@ export async function runEntityExtractionOrchestration(
       `[EntityExtraction] ${suggestionCount} entity + ${relationSuggestionCount} relation + ${factSuggestionCount} fact suggestions saved (3-stage pipeline)`
     );
   }
-
-  deps.recalculateImportance(projectId).catch((err) =>
-    console.error("[EntityExtraction] importance recalc error:", err)
-  );
 
   return { suggestionCount, relationSuggestionCount, factSuggestionCount };
 }

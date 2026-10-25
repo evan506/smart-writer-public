@@ -63,11 +63,11 @@ function renderCanonical(key: PromptTemplateKey): string | null {
 // Recorded (version, hash) pairs. Run the test to get the current hash when
 // intentionally updating a template.
 const RECORDED: Record<PromptTemplateKey, { version: string; hash: string | null }> = {
-  "entity_extraction.stage1_nouns": { version: "v2", hash: "275c01501bb1f0af" },
+  "entity_extraction.stage1_nouns": { version: "v1-public-20261025", hash: "239616bd3c3705f6" },
   "entity_extraction.stage2_classify": { version: "v1", hash: "d91a8b2e9793f03a" },
   "entity_extraction.stage3_relations": { version: "v1", hash: "6b6326a463d39e76" },
   "analysis.chapter": { version: "v1", hash: "1acf7d1d882570ba" },
-  canon_qna: { version: "v1", hash: "f497bcdd66705d8c" },
+  canon_qna: { version: "v2", hash: "f868be393ac98283" },
   "extraction_memory.distillation": { version: "v1", hash: "68ea402a5dbe7697" },
 };
 

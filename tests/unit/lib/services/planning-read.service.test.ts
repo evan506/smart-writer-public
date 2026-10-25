@@ -37,7 +37,7 @@ describe("planning read service", () => {
           entityId: "entity-1",
           factType: "STATE",
           factKey: "약화",
-          value: "카이는 초반부에 힘을 완전히 쓰지 못한다.",
+          value: "리겔은 초반부에 힘을 완전히 쓰지 못한다.",
           status: "APPROVED",
           confidence: 0.9,
           establishedChapterId: null,
@@ -54,7 +54,7 @@ describe("planning read service", () => {
           query([
             {
               id: "entity-1",
-              name: "카이",
+              name: "리겔",
               type: "CHARACTER",
               summary: "약해진 상태",
               project_id: "project-1",
@@ -101,7 +101,7 @@ describe("planning read service", () => {
     expect(result.linkedEntities).toEqual([
       {
         id: "entity-1",
-        name: "카이",
+        name: "리겔",
         type: "CHARACTER",
         summary: "약해진 상태",
       },
@@ -123,7 +123,7 @@ describe("planning read service", () => {
           query([
             {
               id: "entity-1",
-              name: "카이",
+              name: "리겔",
               type: "CHARACTER",
               summary: null,
               project_id: "project-1",

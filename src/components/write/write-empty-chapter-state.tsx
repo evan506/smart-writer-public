@@ -35,6 +35,7 @@ export function WriteEmptyChapterState({
         <button
           onClick={onCreateFirstChapter}
           disabled={isCreatingFirstChapter}
+          aria-busy={isCreatingFirstChapter}
           className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-bold transition-opacity disabled:opacity-60"
           style={{
             background: "var(--sw-cta)",
@@ -46,7 +47,7 @@ export function WriteEmptyChapterState({
           ) : (
             <Plus className="size-4" />
           )}
-          첫 챕터 만들기
+          {isCreatingFirstChapter ? "챕터 생성 중…" : "첫 챕터 만들기"}
         </button>
         <p className="text-[11px]" style={{ color: "var(--sw-text-dim)" }}>
           좌측 챕터 영역의 + 버튼으로도 추가할 수 있습니다.

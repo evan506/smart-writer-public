@@ -53,7 +53,7 @@ describe("write CodexDetailPanel facts", () => {
                 chapterNum: 2,
                 chapterTitle: "정체",
                 chunkId: "chunk-1",
-                evidenceText: "리엔은 하이엘프라고 소개됐다.",
+                evidenceText: "리엔는 하이엘프라고 소개됐다.",
                 evidenceKind: "DIRECT",
               },
             ],
@@ -67,7 +67,7 @@ describe("write CodexDetailPanel facts", () => {
     expect(html).toContain("속성");
     expect(html).toContain("하이엘프다");
     expect(html).toContain("2화 · 정체 근거");
-    expect(html).toContain("리엔은 하이엘프라고 소개됐다.");
+    expect(html).toContain("리엔는 하이엘프라고 소개됐다.");
   });
 
   it("summarizes hidden sources when an approved fact has more than two sources", () => {
@@ -93,7 +93,7 @@ describe("write CodexDetailPanel facts", () => {
                 chapterTitle: "첫 만남",
                 chunkId: "chunk-1",
                 evidenceKind: "DIRECT",
-                evidenceText: "리엔은 변방 마을의 영주로 불렸다.",
+                evidenceText: "리엔는 변방 마을의 영주로 불렸다.",
               },
               {
                 id: "source-2",

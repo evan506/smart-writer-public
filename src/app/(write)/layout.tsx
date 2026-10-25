@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { WriteSidebarProvider } from "@/components/write/write-sidebar-context";
-import { DesktopOnlyOverlay } from "@/components/desktop-only-overlay";
+import { MobileNavigation } from "@/components/mobile-navigation";
 
 export default async function WriteLayout({
   children,
@@ -31,11 +31,11 @@ export default async function WriteLayout({
         rel="stylesheet"
         href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Serif+KR:wght@400;500;600;700&family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap"
       />
-      <DesktopOnlyOverlay />
       <WriteSidebarProvider>
         <SidebarProvider defaultOpen={true}>
           <AppSidebar userEmail={user.email ?? ""} />
-          <main className="flex h-screen flex-1 flex-col overflow-hidden bg-sw-bg-base font-sw-sans text-sw-text-secondary">
+          <main className="flex h-dvh min-w-0 flex-1 flex-col overflow-hidden bg-sw-bg-base font-sw-sans text-sw-text-secondary">
+            <MobileNavigation />
             {children}
           </main>
         </SidebarProvider>

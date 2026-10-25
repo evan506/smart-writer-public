@@ -19,7 +19,7 @@ export function CodexEmptyState() {
         style={{ color: "var(--sw-text-muted)", opacity: 0.4 }}
       />
       <p className="text-sm" style={{ color: "var(--sw-text-muted)" }}>
-        아직 작가 승인된 작품 기억이 없습니다.
+        아직 저장된 작품 기억이 없습니다.
       </p>
       <p
         className="text-xs"

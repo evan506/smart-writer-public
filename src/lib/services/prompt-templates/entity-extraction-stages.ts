@@ -42,7 +42,7 @@ ${STRUCTURED_ANALYSIS_DATA_GUARD}
 ${appendGuidanceSection(guidanceBlock)}
 목표는 많은 후보가 아니라 작가가 검토할 가치가 있는 정확한 후보입니다. 확실한 근거가 없으면 추측하지 말고 생략하세요.
 JSON 배열만 반환. 다른 텍스트 없이.
-예시: ["리엔 하르트", "변방 마을", "흑철 성채"]`;
+예시: ["리엔 하르트", "변방 마을", "산양뿔 소녀"]`;
 
   const user = `${dataSection("current_chapter", chunkText)}
 

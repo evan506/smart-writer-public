@@ -3,10 +3,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ExtractedEntity } from "@/lib/services/prompt-templates";
 import { extractJSONArray } from "@/lib/services/entity-extraction/response-parser";
-import {
-  canAutoMergeSubstringEntities,
-  shouldAutoMergeCharacterSubstring,
-} from "@/lib/services/entity-extraction/merge-policy";
 import { linkSameBatchCharacterAliasRefs } from "@/lib/services/entity-extraction/alias-policy";
 import {
   filterEntityCandidates,
@@ -98,25 +94,6 @@ describe("entity extraction fixture regression", () => {
 
     for (const expected of fixture.expectedTypes) {
       expect(result.find((entity) => entity.name === expected.name)).toMatchObject(expected);
-    }
-  });
-
-  it("applies substring merge policy fixtures", () => {
-    const fixture = readFixture<{
-      cases: Array<{
-        shorterName: string;
-        longerName: string;
-        type: string;
-        expected: boolean;
-      }>;
-    }>("substring-merge-policy.json");
-
-    for (const testCase of fixture.cases) {
-      const result =
-        canAutoMergeSubstringEntities(testCase.type) &&
-        shouldAutoMergeCharacterSubstring(testCase.shorterName, testCase.longerName);
-
-      expect(result).toBe(testCase.expected);
     }
   });
 

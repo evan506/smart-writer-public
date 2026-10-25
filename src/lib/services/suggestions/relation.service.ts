@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { findKnownEntityIdByName } from "../entity-extraction/suggestion-builder";
 import { buildRelationBatchConfirmationPlan } from "@/lib/services/suggestion-action-utils";
 
 type SupabaseClient = Awaited<ReturnType<typeof createClient>>;
@@ -26,27 +27,21 @@ export async function confirmRelationSuggestion(
     return { error: "관계 메타데이터가 올바르지 않습니다" };
   }
 
-  const { data: entities } = await supabase
+  const { data: entities, error: entitiesError } = await supabase
     .from("entities")
-    .select("id, name")
-    .eq("project_id", projectId)
-    .in("name", [meta.from_name, meta.to_name]);
+    .select("id, name, aliases")
+    .eq("project_id", projectId);
 
-  const nameToId = new Map<string, string>();
-  if (entities) {
-    for (const entity of entities) {
-      nameToId.set(entity.name, entity.id);
-    }
-  }
+  if (entitiesError) return { error: entitiesError.message };
 
-  const fromId = nameToId.get(meta.from_name);
-  const toId = nameToId.get(meta.to_name);
+  const fromId = findKnownEntityIdByName(entities ?? [], meta.from_name);
+  const toId = findKnownEntityIdByName(entities ?? [], meta.to_name);
 
   if (!fromId || !toId) {
     const missing = [];
     if (!fromId) missing.push(meta.from_name);
     if (!toId) missing.push(meta.to_name);
-    return { error: `작품 기억 항목을 찾을 수 없습니다: ${missing.join(", ")}. 먼저 해당 작품 기억 항목을 저장하세요.` };
+    return { error: `작품 기억 대상을 확인할 수 없습니다: ${missing.join(", ")}. 먼저 해당 항목을 저장하고, 이름·별칭이 여러 항목과 겹치지 않는지 확인하세요.` };
   }
 
   const { error: linkError } = await supabase
@@ -86,7 +81,7 @@ export async function confirmRelationSuggestionBatch(
 
   const { data: entities, error: entitiesError } = await supabase
     .from("entities")
-    .select("id, name")
+    .select("id, name, aliases")
     .eq("project_id", projectId);
 
   if (entitiesError) return { error: entitiesError.message, confirmed: 0 };

@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 import type { FactSuggestionInsert } from "@/types";
 import type { ExtractedEntity, KnownEntity } from "../prompt-templates";
-import { normalizeEntityName } from "../entity-extraction-utils";
+import { findKnownEntityIdByName } from "./suggestion-builder";
 
 export interface FactSuggestionWriteInput {
   projectId: string;
@@ -16,7 +16,6 @@ export interface FactSuggestionWriteInput {
     }
   >;
   knownEntities: KnownEntity[];
-  autoConfirmedEntityIds: Map<string, string>;
 }
 
 export async function insertFactSuggestions(
@@ -84,17 +83,14 @@ function factInsertKey(insert: FactSuggestionInsert): string {
 export function buildFactSuggestionInserts(
   input: FactSuggestionWriteInput
 ): FactSuggestionInsert[] {
-  const knownEntityIds = buildKnownEntityIdMap(input.knownEntities);
-
   return input.entities.flatMap((entity) => {
     if (!entity.facts?.length) return [];
 
     const suggestionRef = input.entitySuggestionRefs.get(entity.name);
-    const matchedEntityId =
-      input.autoConfirmedEntityIds.get(entity.name) ??
-      suggestionRef?.matched_entity_id ??
-      knownEntityIds.get(normalizeEntityName(entity.name)) ??
-      null;
+    // A pending target selection must not be bypassed by name/alias lookup.
+    const matchedEntityId = suggestionRef
+      ? suggestionRef.matched_entity_id
+      : findKnownEntityIdByName(input.knownEntities, entity.name);
 
     return entity.facts.map((fact) => ({
       project_id: input.projectId,
@@ -109,16 +105,4 @@ export function buildFactSuggestionInserts(
       status: "PENDING",
     }));
   });
-}
-
-function buildKnownEntityIdMap(entities: KnownEntity[]): Map<string, string> {
-  const map = new Map<string, string>();
-  for (const entity of entities) {
-    if (!entity.id) continue;
-    map.set(normalizeEntityName(entity.name), entity.id);
-    for (const alias of entity.aliases ?? []) {
-      map.set(normalizeEntityName(alias), entity.id);
-    }
-  }
-  return map;
 }

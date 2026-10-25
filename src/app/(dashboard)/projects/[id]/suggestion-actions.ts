@@ -165,9 +165,9 @@ export async function confirmSuggestion(
     if (!targetEntityId) return { error: "별칭/호칭으로 저장할 기존 항목을 먼저 선택하세요." };
     const targetResult = await getAliasTargetForProject(supabase, projectId, targetEntityId);
     if (targetResult.error || !targetResult.target) return { error: targetResult.error };
-    result = await confirmSuggestionAlias(supabase, suggestion, targetResult.target, projectId);
+    result = await confirmSuggestionAlias(supabase, suggestion, targetResult.target, projectId, owner.userId);
   } else {
-    result = await confirmEntitySuggestion(supabase, suggestion, projectId, overrides);
+    result = await confirmEntitySuggestion(supabase, suggestion, projectId, overrides, owner.userId);
   }
 
   revalidatePath(`/projects/${projectId}`, "layout");
@@ -208,7 +208,7 @@ export async function confirmSuggestionAsAlias(
     return { error: targetResult.error };
   }
 
-  const result = await confirmSuggestionAlias(supabase, suggestion, targetResult.target, projectId);
+  const result = await confirmSuggestionAlias(supabase, suggestion, targetResult.target, projectId, owner.userId);
   if (result.error) return { error: result.error };
 
   revalidatePath(`/projects/${projectId}`, "layout");
@@ -274,7 +274,7 @@ export async function confirmAllSuggestions(projectId: string) {
   const { entitySuggestions, relationSuggestions } =
     splitSuggestionsForBatchConfirmation(suggestions);
 
-  const entityResult = await confirmEntitySuggestionBatch(supabase, entitySuggestions, projectId);
+  const entityResult = await confirmEntitySuggestionBatch(supabase, entitySuggestions, projectId, owner.userId);
   if (entityResult.error) return { error: entityResult.error };
 
   const relationResult = await confirmRelationSuggestionBatch(supabase, relationSuggestions, projectId);
@@ -311,7 +311,7 @@ export async function confirmRecommendedSuggestions(projectId: string) {
   const { entitySuggestions, relationSuggestions } =
     splitSuggestionsForBatchConfirmation(suggestions);
 
-  const entityResult = await confirmEntitySuggestionBatch(supabase, entitySuggestions, projectId);
+  const entityResult = await confirmEntitySuggestionBatch(supabase, entitySuggestions, projectId, owner.userId);
   if (entityResult.error) return { error: entityResult.error };
 
   const relationResult = await confirmRelationSuggestionBatch(supabase, relationSuggestions, projectId);

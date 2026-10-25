@@ -6,9 +6,9 @@
  *
  * Usage:
  *   npx tsx scripts/ops/build-drift-golden.ts \
- *     --label=sample \
- *     --result=references/test-data/sample/sample-extraction-result.json \
- *     --chapters=references/test-data/sample
+ *     --label=blackiron \
+ *     --result=references/test-data/blackiron/blackiron-extraction-result.json \
+ *     --chapters=references/test-data/blackiron
  */
 import fs from "node:fs";
 import path from "node:path";

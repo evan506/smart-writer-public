@@ -1,10 +1,13 @@
 "use client";
 
+import Link from "next/link";
+import { ShieldCheck } from "lucide-react";
 import { usePathname } from "next/navigation";
 import {
   Sidebar,
   SidebarContent,
   SidebarSeparator,
+  SidebarGroup, SidebarMenu, SidebarMenuItem, SidebarMenuButton,
   useSidebar,
 } from "@/components/ui/sidebar";
 import { AppSidebarHeader } from "./app-sidebar/sidebar-header";
@@ -14,11 +17,11 @@ import { UserFooter } from "./app-sidebar/user-footer";
 import { extractProjectId } from "./app-sidebar/utils";
 import { WriteChapterSidebar } from "./app-sidebar/write-chapter-sidebar";
 
-export function AppSidebar({ userEmail }: { userEmail: string }) {
+export function AppSidebar({ userEmail, isAdmin = false }: { userEmail: string; isAdmin?: boolean }) {
   const pathname = usePathname();
   const projectId = extractProjectId(pathname);
-  const { state, toggleSidebar } = useSidebar();
-  const expanded = state === "expanded";
+  const { state, isMobile, toggleSidebar } = useSidebar();
+  const expanded = isMobile || state === "expanded";
 
   // /projects 정확히 → 사이드바 없음
   if (pathname === "/projects") return null;
@@ -41,6 +44,7 @@ export function AppSidebar({ userEmail }: { userEmail: string }) {
           isCodex={isCodex}
           isPlanning={isPlanning}
         />
+        {isAdmin && <SidebarGroup><SidebarMenu><SidebarMenuItem><SidebarMenuButton asChild isActive={pathname === "/admin"}><Link href="/admin"><ShieldCheck className="size-4" /><span>AI 운영 현황</span></Link></SidebarMenuButton></SidebarMenuItem></SidebarMenu></SidebarGroup>}
         <SidebarSeparator />
         {isWrite && projectId && <WriteChapterSidebar expanded={expanded} />}
         {isCodex && projectId && <CodexSidebarStats projectId={projectId} />}

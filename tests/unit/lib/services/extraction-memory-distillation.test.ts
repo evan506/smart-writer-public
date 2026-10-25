@@ -21,14 +21,14 @@ describe("normalizeRuleKey", () => {
 
 describe("referencesApprovedEntity", () => {
   it("flags a rule text containing an approved entity name", () => {
-    expect(referencesApprovedEntity("카이는 제외한다", ["카이", "세나"])).toBe(
+    expect(referencesApprovedEntity("리겔은 제외한다", ["리겔", "세나"])).toBe(
       true
     );
   });
 
   it("ignores generic patterns with no entity name", () => {
     expect(
-      referencesApprovedEntity("이름이 없는 불특정 인물은 제외", ["카이"])
+      referencesApprovedEntity("이름이 없는 불특정 인물은 제외", ["리겔"])
     ).toBe(false);
   });
 
@@ -38,7 +38,7 @@ describe("referencesApprovedEntity", () => {
 });
 
 describe("prepareDistilledRules", () => {
-  const opts = { approvedEntityNames: ["카이"], existingKeys: new Set<string>() };
+  const opts = { approvedEntityNames: ["리겔"], existingKeys: new Set<string>() };
 
   it("accepts generic rules as DISABLED proposals", () => {
     const { accepted } = prepareDistilledRules(
@@ -56,7 +56,7 @@ describe("prepareDistilledRules", () => {
 
   it("rejects rules referencing an approved entity", () => {
     const { accepted, rejected } = prepareDistilledRules(
-      [{ text: "카이는 추출하지 않음" }],
+      [{ text: "리겔은 추출하지 않음" }],
       opts
     );
     expect(accepted).toHaveLength(0);

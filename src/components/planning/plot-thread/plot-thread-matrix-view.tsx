@@ -63,12 +63,13 @@ export function PlotThreadMatrixView({
 
   // Keep the edit form in sync with the currently selected thread (and with
   // server-refreshed values after a save).
-  const selectedThreadKey = `${selectedThread?.id ?? ""}|${selectedThread?.title ?? ""}|${selectedThread?.summary ?? ""}`;
+  const selectedThreadIdForForm = selectedThread?.id ?? "";
+  const selectedThreadTitle = selectedThread?.title ?? "";
+  const selectedThreadSummary = selectedThread?.summary ?? "";
   useEffect(() => {
-    setEditTitle(selectedThread?.title ?? "");
-    setEditSummary(selectedThread?.summary ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedThreadKey]);
+    setEditTitle(selectedThreadTitle);
+    setEditSummary(selectedThreadSummary);
+  }, [selectedThreadIdForForm, selectedThreadTitle, selectedThreadSummary]);
 
   const chapterById = useMemo(
     () => new Map(chapters.map((c) => [c.id, c])),

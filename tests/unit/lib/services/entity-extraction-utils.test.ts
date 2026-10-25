@@ -5,7 +5,6 @@ import {
   repairJSONQuotes,
 } from "@/lib/services/entity-extraction/response-parser";
 import {
-  canAutoMergeSubstringEntities,
   shouldAutoMergeCharacterSubstring,
 } from "@/lib/services/entity-extraction/merge-policy";
 import { linkSameBatchCharacterAliasRefs } from "@/lib/services/entity-extraction/alias-policy";
@@ -42,13 +41,13 @@ describe("entity extraction utils", () => {
 
   it("filters standalone generic role nouns while preserving qualified titles", () => {
     const result = filterEntityCandidates(
-      ["사자", "전령", "경비병", "하인", "상인", "영주", "왕", "전사", "개척자", "노예들", "제국민", "야만인", "도어락", "케이지", "늑대귀", "꼬맹이", "배신자", "검은 탑의 사자", "엘프 왕", "미래 기사", "관상용 케이지", "강철주먹 카일", "늑대 수인 꼬맹이", "여우귀 수인"],
+      ["사자", "전령", "경비병", "하인", "상인", "영주", "왕", "전사", "개척자", "노예들", "제국민", "야만인", "도어락", "케이지", "늑대귀", "꼬맹이", "배신자", "검은 탑의 사자", "엘프 왕", "미래 기사", "관상용 케이지", "왕주먹 게일", "늑대 수인 꼬맹이", "여우귀 수인"],
       normalizedNameSet([]),
       normalizedNameSet([]),
       normalizedNameSet([])
     );
 
-    expect(result).toEqual(["검은 탑의 사자", "엘프 왕", "미래 기사", "관상용 케이지", "강철주먹 카일", "늑대 수인 꼬맹이", "여우귀 수인"]);
+    expect(result).toEqual(["검은 탑의 사자", "엘프 왕", "미래 기사", "관상용 케이지", "왕주먹 게일", "늑대 수인 꼬맹이", "여우귀 수인"]);
   });
 
   it("detects only standalone generic role candidates", () => {
@@ -69,35 +68,28 @@ describe("entity extraction utils", () => {
     expect(isStandaloneGenericRoleCandidate("미래 기사")).toBe(false);
     expect(isStandaloneGenericRoleCandidate("관상용 케이지")).toBe(false);
     expect(isStandaloneGenericRoleCandidate("여우귀 수인")).toBe(false);
-    expect(isStandaloneGenericRoleCandidate("강철주먹 카일")).toBe(false);
+    expect(isStandaloneGenericRoleCandidate("왕주먹 게일")).toBe(false);
     expect(isStandaloneGenericRoleCandidate("늑대 수인 꼬맹이")).toBe(false);
   });
 
-  it("limits substring auto-merge to character entities", () => {
-    expect(canAutoMergeSubstringEntities("CHARACTER")).toBe(true);
-    expect(canAutoMergeSubstringEntities("CONCEPT")).toBe(false);
-    expect(canAutoMergeSubstringEntities("PLACE")).toBe(false);
-    expect(canAutoMergeSubstringEntities("ORGANIZATION")).toBe(false);
-  });
-
-  it("only auto-merges prefix character abbreviations", () => {
+  it("recognizes prefix names for same-batch alias classification", () => {
     expect(shouldAutoMergeCharacterSubstring("리엔", "리엔 하르트")).toBe(true);
-    expect(shouldAutoMergeCharacterSubstring("카일", "강철주먹 카일")).toBe(false);
+    expect(shouldAutoMergeCharacterSubstring("게일", "왕주먹 게일")).toBe(false);
     expect(shouldAutoMergeCharacterSubstring("수인", "늑대 수인")).toBe(false);
   });
 
   it("links same-batch title plus name expressions as alias refs", () => {
     const result = linkSameBatchCharacterAliasRefs([
-      entity({ name: "카일", confidence: 0.9 }),
-      entity({ name: "강철주먹 카일", confidence: 0.9 }),
+      entity({ name: "게일", confidence: 0.9 }),
+      entity({ name: "왕주먹 게일", confidence: 0.9 }),
       entity({ name: "리엔 하르트", confidence: 0.9 }),
       entity({ name: "리엔", confidence: 0.8 }),
       entity({ name: "늑대 수인", type: "CONCEPT", confidence: 0.9 }),
     ]);
 
-    expect(result.find((item) => item.name === "강철주먹 카일")).toMatchObject({
+    expect(result.find((item) => item.name === "왕주먹 게일")).toMatchObject({
       sub_type: "alias_ref",
-      alias_of: "카일",
+      alias_of: "게일",
     });
     expect(result.find((item) => item.name === "리엔 하르트")?.sub_type).toBeUndefined();
     expect(result.find((item) => item.name === "늑대 수인")?.sub_type).toBeUndefined();

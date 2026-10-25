@@ -45,6 +45,9 @@ export interface EvalRun {
   gitSha?: string;
   tier: "smoke" | "standard" | "full";
   results: ScenarioResult[];
+  status?: "completed" | "aborted";
+  unexecutedScenarioIds?: string[];
+  stopReason?: string;
   // Aggregate over non-environment-failure results.
   aggregate: {
     scenarioCount: number;

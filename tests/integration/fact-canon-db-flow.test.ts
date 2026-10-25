@@ -76,7 +76,7 @@ async function seedFactCanonProject(
         fact_type: "ATTRIBUTE",
         fact_key: "species",
         value: "인간이다",
-        evidence_text: "리엔은 인간이라고 불렸다.",
+        evidence_text: "리엔는 인간이라고 불렸다.",
         status: "PENDING",
       },
       {
@@ -86,7 +86,7 @@ async function seedFactCanonProject(
         fact_type: "ABILITY",
         fact_key: "combat",
         value: "마법도 다룬다",
-        evidence_text: "리엔은 전투 중 마법을 사용했다.",
+        evidence_text: "리엔는 전투 중 마법을 사용했다.",
         status: "PENDING",
       },
     ])
@@ -205,7 +205,7 @@ runner("fact canon DB flow", () => {
       {
         fact_id: result.factId,
         chapter_id: seeded.chapterId,
-        evidence_text: "리엔은 인간이라고 불렸다.",
+        evidence_text: "리엔는 인간이라고 불렸다.",
       },
     ]);
 

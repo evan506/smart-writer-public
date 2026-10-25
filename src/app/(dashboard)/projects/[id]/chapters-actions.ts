@@ -1,7 +1,6 @@
 "use server";
 
 import { after } from "next/server";
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import {
   requireProjectOwner,
@@ -12,10 +11,11 @@ import {
   IndexingService,
   AIAnalysisService,
   checkLLMBudget,
-  LLM_BUDGET_BLOCKED_MESSAGE,
+  getLLMBudgetMessage,
 } from "@/lib/services";
 import type { AIAnalysisResult } from "@/types/ai-analysis";
 import { z } from "zod";
+import { createChapterSafely, createChapterSchema, type CreateChapterResult } from "@/lib/services/chapter-create";
 
 const saveChapterSchema = z.object({
   chapterId: z.uuid(),
@@ -24,30 +24,20 @@ const saveChapterSchema = z.object({
   content: z.string().max(500_000).nullable(),
 });
 
-export async function createChapter(formData: FormData) {
+// The workspace applies mutation results to its owned draft/chapter state.
+// These pages read uncached data on entry; a Server Action revalidation can
+// refresh an older chapter URL after the user has already started the next draft.
+export async function createChapter(formData: FormData): Promise<CreateChapterResult> {
+  const parsed = createChapterSchema.safeParse({
+    projectId: formData.get("projectId"),
+    requestId: formData.get("requestId"),
+    title: formData.get("title"),
+  });
+  if (!parsed.success) {
+    return { error: "챕터 생성 요청이 올바르지 않습니다.", id: null, chapter: null };
+  }
   const supabase = await createClient();
-
-  const projectId = formData.get("projectId") as string;
-  const owner = await requireProjectOwner(supabase, projectId);
-  if (!owner.ok) return { error: owner.error, id: null };
-
-  const title = (formData.get("title") as string) || null;
-  const chapterNum = Number(formData.get("chapterNum"));
-
-  const { data, error } = await supabase
-    .from("chapters")
-    .insert({
-      project_id: projectId,
-      title,
-      chapter_num: chapterNum,
-    })
-    .select("id")
-    .single();
-
-  if (error) return { error: error.message, id: null };
-
-  revalidatePath(`/projects/${projectId}/write`);
-  return { error: null, id: data.id };
+  return createChapterSafely(supabase, parsed.data);
 }
 
 export async function saveChapter(
@@ -56,7 +46,7 @@ export async function saveChapter(
   title: string | null,
   content: string | null,
   options?: { skipExtraction?: boolean }
-): Promise<{ error: string | null; budgetBlocked?: boolean }> {
+): Promise<{ error: string | null; budgetBlocked?: boolean; budgetReason?: "unavailable" }> {
   const supabase = await createClient();
 
   const parsed = saveChapterSchema.safeParse({ chapterId, projectId, title, content });
@@ -78,22 +68,31 @@ export async function saveChapter(
   if (content && !options?.skipExtraction) {
     // Cost guard: the manuscript save above always succeeds; only the
     // LLM-backed background indexing/extraction is paused when over budget.
-    const budget = await checkLLMBudget(supabase, {
-      projectId,
-      userId: owner.userId,
-    });
-    if (!budget.allowed) {
-      revalidatePath(`/projects/${projectId}`);
-      return { error: null, budgetBlocked: true };
+    try {
+      const budget = await checkLLMBudget(supabase, {
+        projectId,
+        userId: owner.userId,
+      });
+      if (!budget.allowed) {
+        return {
+          error: null,
+          budgetBlocked: true,
+          ...(budget.reason === "unavailable" ? { budgetReason: "unavailable" as const } : {}),
+        };
+      }
+      after(async () => {
+        const bgSupabase = await createClient();
+        const indexer = new IndexingService(bgSupabase);
+        await indexer.indexChapterWithExtraction(chapterId, projectId, content, {
+          userId: owner.userId,
+        });
+      });
+    } catch (error) {
+      console.error("[saveChapter] post-save AI scheduling failed:", error);
+      return { error: null, budgetBlocked: true, budgetReason: "unavailable" };
     }
-    after(async () => {
-      const bgSupabase = await createClient();
-      const indexer = new IndexingService(bgSupabase);
-      await indexer.indexChapterWithExtraction(chapterId, projectId, content);
-    });
   }
 
-  revalidatePath(`/projects/${projectId}`);
   return { error: null, budgetBlocked: false };
 }
 
@@ -120,7 +119,6 @@ export async function deleteChapter(chapterId: string, projectId: string) {
 
   if (error) return { error: error.message };
 
-  revalidatePath(`/projects/${projectId}/write`);
   return { error: null };
 }
 
@@ -159,7 +157,7 @@ export async function analyzeChapter(
     userId: owner.userId,
   });
   if (!budget.allowed) {
-    return { error: LLM_BUDGET_BLOCKED_MESSAGE, result: null };
+    return { error: getLLMBudgetMessage(budget), result: null };
   }
 
   const service = new AIAnalysisService(supabase);

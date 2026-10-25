@@ -10,13 +10,17 @@ export interface WriteSidebarData {
   projectGenre: string | null;
   chapters: Chapter[];
   activeChapterId: string | null;
+  isCreating: boolean;
 }
 
 /* ── Callbacks (stored in ref, no re-render) ── */
 export interface WriteSidebarCallbacks {
+  // Route all chapter changes through the workspace's pinned-draft guard.
   onSelectChapter: (chapter: Chapter) => void;
-  onChapterCreated: (chapter: Chapter) => void | Promise<void>;
+  onCreateChapter: () => void | Promise<void>;
   onChapterDeleted: (chapterId: string) => void;
+  onBeforeChapterDelete: () => Promise<boolean>;
+  onChapterDeleteFinished: () => void;
 }
 
 interface WriteSidebarContextValue {

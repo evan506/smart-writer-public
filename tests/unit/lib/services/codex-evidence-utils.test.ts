@@ -10,12 +10,12 @@ describe("codex evidence utils", () => {
     const map = buildCodexNameToIdMap([
       {
         id: "entity-rikel",
-        name: "리켈",
+        name: "세란",
         aliases: ["은빛 까마귀", "불과 폭풍의 마왕"],
       },
     ]);
 
-    expect(map.get("리켈")).toBe("entity-rikel");
+    expect(map.get("세란")).toBe("entity-rikel");
     expect(map.get("은빛 까마귀")).toBe("entity-rikel");
     expect(map.get("불과 폭풍의 마왕")).toBe("entity-rikel");
   });
@@ -25,7 +25,7 @@ describe("codex evidence utils", () => {
       entities: [
         {
           id: "entity-rikel",
-          name: "리켈",
+          name: "세란",
           aliases: ["은빛 까마귀"],
         },
         {
@@ -78,7 +78,7 @@ describe("codex evidence utils", () => {
   it("ignores invalid relation metadata and missing chapter mappings", () => {
     const result = assembleCodexRelationEvidence({
       entities: [
-        { id: "entity-a", name: "리켈", aliases: [] },
+        { id: "entity-a", name: "세란", aliases: [] },
         { id: "entity-b", name: "성문", aliases: [] },
       ],
       links: [
@@ -95,7 +95,7 @@ describe("codex evidence utils", () => {
           id: "bad-meta",
           chapter_id: "chapter-1",
           name: "bad",
-          aliases: { from_name: "리켈", relation_type: "LOCATED_IN" },
+          aliases: { from_name: "세란", relation_type: "LOCATED_IN" },
           context_snippet: null,
           updated_at: null,
         },
@@ -104,7 +104,7 @@ describe("codex evidence utils", () => {
           chapter_id: "missing",
           name: "missing chapter",
           aliases: {
-            from_name: "리켈",
+            from_name: "세란",
             to_name: "성문",
             relation_type: "LOCATED_IN",
           },
@@ -123,7 +123,7 @@ describe("codex evidence utils", () => {
       [
         {
           id: "foreshadow-1",
-          description: "아이들이 리켈을 두려운 호칭으로 부르는 이유",
+          description: "아이들이 세란을 두려운 호칭으로 부르는 이유",
           planted_chapter: 1,
           expected_reveal: 5,
           status: "PLANTED",
@@ -145,7 +145,7 @@ describe("codex evidence utils", () => {
       "entity-rikel": [
         {
           id: "foreshadow-1",
-          description: "아이들이 리켈을 두려운 호칭으로 부르는 이유",
+          description: "아이들이 세란을 두려운 호칭으로 부르는 이유",
           plantedChapter: 1,
           expectedReveal: 5,
           status: "PLANTED",

@@ -40,7 +40,7 @@ function deps(overrides: Partial<DistillationDeps> = {}): DistillationDeps {
     loadRecentDismissedNames: vi.fn(async () =>
       Array.from({ length: MIN_DISMISSALS_FOR_DISTILLATION }, (_, i) => `이름${i}`)
     ),
-    loadApprovedEntityNames: vi.fn(async () => ["카이"]),
+    loadApprovedEntityNames: vi.fn(async () => ["리겔"]),
     loadExistingRuleKeys: vi.fn(async () => new Set<string>()),
     proposeRules: vi.fn(async () => '[{"key":"flashback","text":"회상 중복 제외"}]'),
     insertProposals: vi.fn(async () => ({ inserted: 1, error: null })),
@@ -78,7 +78,7 @@ describe("runExtractionDistillation", () => {
 
   it("rejects a proposal that references an approved entity", async () => {
     const d = deps({
-      proposeRules: vi.fn(async () => '[{"text":"카이는 제외"}]'),
+      proposeRules: vi.fn(async () => '[{"text":"리겔은 제외"}]'),
     });
     const outcome = await runExtractionDistillation("p1", d);
     expect(outcome.skippedReason).toBe("no_patterns");

@@ -50,14 +50,14 @@ export function CodexFullPageHeader({
 }: CodexFullPageHeaderProps) {
   return (
     <div
-      className="flex-shrink-0 px-6 pt-4"
+      className="flex-shrink-0 px-4 pt-4 md:px-6"
       style={{
         borderBottom: "1px solid var(--sw-border-subtle)",
         background: "var(--sw-bg-surface)",
       }}
     >
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-baseline gap-[10px]">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <div className="flex flex-wrap items-baseline gap-[10px]">
           <h1 className="text-xl font-bold tracking-tight">작품 기억</h1>
           <span className="text-[11px]" style={{ color: "var(--sw-text-ghost)" }}>
             {projectTitle} · {totalChapters > 0 ? `${totalChapters}화까지의 세계관` : "세계관 관리"}
@@ -82,7 +82,7 @@ export function CodexFullPageHeader({
 
       <div className="flex items-center gap-[10px] flex-wrap">
         <div
-          className="flex items-center gap-[7px] px-3 py-[6px] rounded-[10px] w-[260px] transition-colors"
+          className="flex items-center gap-[7px] px-3 py-[6px] rounded-[10px] w-full sm:w-[260px] transition-colors"
           style={{
             background: "var(--sw-bg-card)",
             border: "1px solid var(--sw-border-subtle)",
@@ -99,7 +99,7 @@ export function CodexFullPageHeader({
           />
         </div>
 
-        <div className="flex gap-[5px]">
+        <div className="flex flex-wrap gap-[5px]">
           <FilterChip
             active={typeFilter === null && statusFilter === null}
             onClick={() => {
@@ -132,7 +132,7 @@ export function CodexFullPageHeader({
           style={{ background: "var(--sw-border-subtle)" }}
         />
 
-        <div className="flex gap-[5px]">
+        <div className="flex flex-wrap gap-[5px]">
           <button
             onClick={() => {
               onStatusFilterChange(statusFilter === "review" ? null : "review");
@@ -162,10 +162,10 @@ export function CodexFullPageHeader({
       </div>
 
       <div
-        className="flex items-center justify-between mt-[10px] py-[10px]"
+        className="flex flex-wrap gap-2 items-center justify-between mt-[10px] py-[10px]"
         style={{ borderTop: "1px solid var(--sw-border-subtle)" }}
       >
-        <div className="flex items-center gap-[14px]">
+        <div className="flex flex-wrap items-center gap-[14px]">
           <div className="flex items-center gap-[6px]">
             <span className="text-[11px]" style={{ color: "var(--sw-text-ghost)" }}>
               정렬

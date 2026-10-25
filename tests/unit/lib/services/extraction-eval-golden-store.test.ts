@@ -13,7 +13,7 @@ import type { EvalRun, ScenarioResult } from "@/lib/services/extraction-eval/typ
 
 describe("buildGoldenScenarios", () => {
   const chapters = [
-    { id: "ch1", chapter_num: 1, content: "카이가 등장했다." },
+    { id: "ch1", chapter_num: 1, content: "리겔이 등장했다." },
     { id: "ch2", chapter_num: 2, content: "내용 있음" },
     { id: "ch3", chapter_num: 3, content: "   " }, // empty after trim
   ];
@@ -23,15 +23,15 @@ describe("buildGoldenScenarios", () => {
       projectId: "p1",
       chapters,
       suggestions: [
-        { chapter_id: "ch1", name: "카이", type: "CHARACTER", status: "CONFIRMED" },
+        { chapter_id: "ch1", name: "리겔", type: "CHARACTER", status: "CONFIRMED" },
         { chapter_id: "ch1", name: "무명 병사", type: "CHARACTER", status: "DISMISSED" },
-        { chapter_id: "ch1", name: "카이", type: "CHARACTER", status: "CONFIRMED" }, // dup
+        { chapter_id: "ch1", name: "리겔", type: "CHARACTER", status: "CONFIRMED" }, // dup
       ],
     });
     expect(scenarios).toHaveLength(1);
     expect(scenarios[0]).toMatchObject({
       id: "p1:ch1",
-      shouldExtract: ["카이"],
+      shouldExtract: ["리겔"],
       shouldNotExtract: ["무명 병사"],
     });
   });
@@ -43,7 +43,7 @@ describe("buildGoldenScenarios", () => {
       suggestions: [
         { chapter_id: "ch1", name: "A → B", type: "RELATION", status: "CONFIRMED" },
         { chapter_id: "ch2", name: "X", type: "CHARACTER", status: "PENDING" },
-        { chapter_id: "ch3", name: "카이", type: "CHARACTER", status: "CONFIRMED" },
+        { chapter_id: "ch3", name: "리겔", type: "CHARACTER", status: "CONFIRMED" },
       ],
     });
     // ch1 has only a RELATION (ignored), ch2 only PENDING (no label), ch3 empty.

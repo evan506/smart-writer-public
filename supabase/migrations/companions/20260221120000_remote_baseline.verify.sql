@@ -14,7 +14,7 @@
 -- policies/triggers/constraints.
 --
 -- MAINTENANCE LOG:
---   2026-05-16  initial snapshot (live remote REDACTED-SUPABASE-PROJECT-REF):
+--   2026-05-16  initial snapshot (live remote jxcargpzpifpmwtpjhmd):
 --               tables 20, rls 20, indexes 97, policies 67, app_funcs 12,
 --               triggers 12, FK 43, CHECK 25, PK+UK 23.
 --   2026-06-22  re-baselined to the actual disposable-replay catalog counts
@@ -24,11 +24,14 @@
 --               +1 table) and 20260621120000_v3_3_plot_threads (V3.3, +3 tables
 --               + 2 guard functions + 3 triggers). Values below are MEASURED
 --               from `pnpm db:replay-verify`'s replay DB, not estimated.
+--   2026-09-14  +2 atomic Codex entity mutation functions.
+--   2026-10-09  +1 read-only AI budget aggregate function; full pg17 replay
+--               observed 17 app functions, with other tallies unchanged.
 --
 -- Expected public-schema inventory (measured 2026-06-22, full chain):
 --   tables                24   rls-enabled tables    24
 --   indexes (pg_indexes) 110   policies              83
---   app functions         14   triggers              16
+--   app functions         17   triggers              16
 --   FK constraints        51   CHECK constraints     30
 --   PK+UNIQUE constraints 29
 
@@ -79,7 +82,7 @@ BEGIN
   IF v_rls       <> 24 THEN RAISE EXCEPTION 'rls-enabled tables: expected 24, got %', v_rls; END IF;
   IF v_indexes   <> 110 THEN RAISE EXCEPTION 'indexes: expected 110, got %', v_indexes; END IF;
   IF v_policies  <> 83 THEN RAISE EXCEPTION 'policies: expected 83, got %', v_policies; END IF;
-  IF v_app_funcs <> 14 THEN RAISE EXCEPTION 'app functions: expected 14, got %', v_app_funcs; END IF;
+  IF v_app_funcs <> 17 THEN RAISE EXCEPTION 'app functions: expected 17, got %', v_app_funcs; END IF;
   IF v_triggers  <> 16 THEN RAISE EXCEPTION 'triggers: expected 16, got %', v_triggers; END IF;
   IF v_fks       <> 51 THEN RAISE EXCEPTION 'FK constraints: expected 51, got %', v_fks; END IF;
   IF v_checks    <> 30 THEN RAISE EXCEPTION 'CHECK constraints: expected 30, got %', v_checks; END IF;
@@ -127,6 +130,10 @@ BEGIN
     WHERE NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
       WHERE n.nspname='public' AND p.proname='list_pending_fact_review_items' AND p.prokind='f')
     UNION ALL
+    SELECT 'get_llm_usage_totals'
+    WHERE NOT EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+      WHERE n.nspname='public' AND p.proname='get_llm_usage_totals' AND p.prokind='f')
+    UNION ALL
     SELECT 'planning_blocks'
     WHERE NOT EXISTS (SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
       WHERE n.nspname='public' AND c.relname='planning_blocks' AND c.relkind='r')
@@ -154,6 +161,6 @@ BEGIN
     RAISE EXCEPTION 'missing required objects: %', v_missing;
   END IF;
 
-  RAISE NOTICE 'BASELINE VERIFY PASSED: 20 tables / 97 indexes / 67 policies / 12 functions / 12 triggers / 43 FK / 25 CHECK / 23 PK+UNIQUE, key objects present.';
+  RAISE NOTICE 'BASELINE VERIFY PASSED: cumulative schema inventory and key objects present.';
 END
 $$;

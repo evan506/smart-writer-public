@@ -36,6 +36,14 @@ export type LLMProviderRouting = {
   order?: string[];
   ignore?: string[];
   zdr?: boolean;
+  only?: string[];
+  allow_fallbacks?: boolean;
+  require_parameters?: boolean;
+  max_price?: {
+    prompt?: number;
+    completion?: number;
+    request?: number;
+  };
 };
 
 function parseList(raw: string | undefined): string[] | undefined {

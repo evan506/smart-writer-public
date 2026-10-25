@@ -9,6 +9,16 @@ const jobServiceMock = vi.hoisted(() => ({
   markFailed: vi.fn(),
 }));
 
+const guardMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/services/budgeted-embedding", () => ({
+  createBudgetedEmbeddingOptions: vi.fn(() => ({})),
+}));
+vi.mock("@/lib/services/llm-budget.service", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/services/llm-budget.service")>(),
+  createLLMBudgetGuard: vi.fn(() => guardMock),
+}));
+
 const extractAndSuggestMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/services/chunking.service", () => ({
@@ -39,6 +49,7 @@ vi.mock("@/lib/services/entity-extraction.service", () => ({
   }),
 }));
 
+import { LLMBudgetError } from "@/lib/services/llm-budget.service";
 import { IndexingService } from "@/lib/services/indexing.service";
 
 const PROJECT_ID = "11111111-1111-1111-1111-111111111111";
@@ -54,6 +65,9 @@ function createSupabaseMock(options?: {
   const chapterReads = [...(options?.chapterReads ?? [])];
   return {
     from: vi.fn((table: string) => {
+      if (table === "projects") return { select: vi.fn(() => ({
+        eq: vi.fn(() => ({ maybeSingle: vi.fn().mockResolvedValue({ data: { user_id: "owner" }, error: null }) })),
+      })) };
       if (table === "chapters") {
         const content = chapterReads.length > 0 ? chapterReads.shift()! : null;
         return {
@@ -99,6 +113,7 @@ function createSupabaseMock(options?: {
 describe("IndexingService.indexChapterWithExtraction", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    guardMock.mockReset().mockResolvedValue(undefined);
     jobServiceMock.createJob.mockResolvedValue({
       jobId: JOB_ID,
       alreadyRunning: false,
@@ -310,4 +325,50 @@ describe("IndexingService.indexChapterWithExtraction", () => {
     // Return value reflects the successful follow-up, not the failed first run.
     expect(result.suggestionCount).toBe(5);
   });
+  it("marks a blocked background run FAILED without indexing or extraction", async () => {
+    guardMock.mockRejectedValue(new LLMBudgetError("monthly"));
+    const supabase = createSupabaseMock();
+    await expect(new IndexingService(supabase).indexChapterWithExtraction(CHAPTER_ID, PROJECT_ID, "본문"))
+      .rejects.toBeInstanceOf(LLMBudgetError);
+    expect(supabase.from).not.toHaveBeenCalledWith("chunks");
+    expect(extractAndSuggestMock).not.toHaveBeenCalled();
+    expect(jobServiceMock.markFailed).toHaveBeenCalledWith(JOB_ID, expect.stringContaining("한도"));
+    expect(jobServiceMock.markDone).not.toHaveBeenCalled();
+  });
+
+  it("rechecks the follow-up and stops the chain when its budget is blocked", async () => {
+    guardMock.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new LLMBudgetError("monthly"));
+    jobServiceMock.createJob.mockResolvedValueOnce({ jobId: JOB_ID, alreadyRunning: false })
+      .mockResolvedValueOnce({ jobId: "job-2", alreadyRunning: false });
+    const service = new IndexingService(createSupabaseMock({ chapterReads: ["새 본문"] }));
+    await expect(service.indexChapterWithExtraction(CHAPTER_ID, PROJECT_ID, "본문"))
+      .rejects.toBeInstanceOf(LLMBudgetError);
+    expect(guardMock).toHaveBeenCalledTimes(2);
+    expect(extractAndSuggestMock).toHaveBeenCalledTimes(1);
+    expect(jobServiceMock.markFailed).toHaveBeenCalledWith("job-2", expect.stringContaining("한도"));
+    expect(jobServiceMock.markDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not swallow a budget error from extraction or start follow-ups", async () => {
+    extractAndSuggestMock.mockRejectedValue(new LLMBudgetError("unavailable"));
+    const service = new IndexingService(createSupabaseMock({ chapterReads: ["새 본문"] }));
+    await expect(service.indexChapterWithExtraction(CHAPTER_ID, PROJECT_ID, "본문"))
+      .rejects.toBeInstanceOf(LLMBudgetError);
+    expect(jobServiceMock.markFailed).toHaveBeenCalledTimes(1);
+    expect(jobServiceMock.markDone).not.toHaveBeenCalled();
+    expect(jobServiceMock.createJob).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails safely when the RLS-visible project owner cannot be resolved", async () => {
+    const supabase = { from: vi.fn(() => ({ select: vi.fn(() => ({ eq: vi.fn(() => ({
+      maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+    })) })) })) } as unknown as SupabaseClient<Database>;
+    await expect(new IndexingService(supabase).indexChapterWithExtraction(CHAPTER_ID, PROJECT_ID, "본문"))
+      .rejects.toBeInstanceOf(LLMBudgetError);
+    expect(guardMock).not.toHaveBeenCalled();
+    expect(extractAndSuggestMock).not.toHaveBeenCalled();
+    expect(jobServiceMock.markFailed).toHaveBeenCalledTimes(1);
+    expect(jobServiceMock.markDone).not.toHaveBeenCalled();
+  });
+
 });

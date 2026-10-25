@@ -1,6 +1,7 @@
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { createLLMUsageLogger } from "../llm-usage-logger.service";
+import { LLMBudgetError } from "../llm-budget.service";
+import { createBudgetedEmbeddingOptions } from "../budgeted-embedding";
 import { embedText } from "../embedding.service";
 import { mergeAliasValues } from "@/lib/services/suggestion-action-utils";
 import type { EntityType } from "@/types";
@@ -26,7 +27,8 @@ export async function confirmEntitySuggestion(
   supabase: SupabaseClient,
   suggestion: ConfirmEntitySuggestionRow,
   projectId: string,
-  overrides?: ConfirmEntitySuggestionOverrides
+  overrides?: ConfirmEntitySuggestionOverrides,
+  userId?: string | null
 ): Promise<{ error: string | null; entityId?: string }> {
   const name = overrides?.name ?? suggestion.name;
   const type = overrides?.type ?? suggestion.type;
@@ -68,24 +70,31 @@ export async function confirmEntitySuggestion(
     entityId = entity.id;
 
     after(async () => {
-      const embeddingText = [name, summary, ...(aliases as string[])]
-        .filter(Boolean)
-        .join(" ");
-      const bgSupabase = await createClient();
-      const embedding = await embedText(embeddingText, {
-        onComplete: createLLMUsageLogger(bgSupabase, {
-          projectId,
+      try {
+        const embeddingText = [name, summary, ...(aliases as string[])]
+          .filter(Boolean)
+          .join(" ");
+        const bgSupabase = await createClient();
+        const embedding = await embedText(embeddingText, createBudgetedEmbeddingOptions(bgSupabase, {
+          projectId: projectId ?? "",
+          userId,
           feature: "embedding",
           promptTemplateKey: "suggestions.entity_embedding",
           promptTemplateVersion: "v1",
-        }),
-      });
-      const { error: embeddingError } = await bgSupabase
-        .from("entities")
-        .update({ embedding: JSON.stringify(embedding) })
-        .eq("id", entityId);
-      if (embeddingError) {
-        console.error("[Suggestions] embedding update error:", embeddingError.message);
+        }));
+        const { error: embeddingError } = await bgSupabase
+          .from("entities")
+          .update({ embedding: JSON.stringify(embedding) })
+          .eq("id", entityId);
+        if (embeddingError) {
+          console.error("[Suggestions] embedding update error:", embeddingError.message);
+        }
+      } catch (error) {
+        if (error instanceof LLMBudgetError) {
+          console.warn("[AI] optional entity embedding skipped:", error.message);
+        } else {
+          console.error("[AI] optional entity embedding stopped:", error);
+        }
       }
     });
   }

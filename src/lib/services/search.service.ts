@@ -27,12 +27,18 @@ export class SearchService {
   async searchChaptersBm25(
     projectId: string,
     query: string,
-    limit = 10
+    limit = 10,
+    options?: { wordSimilarityThreshold?: 0.25 | 0.3 }
   ): Promise<SearchChaptersBm25Result[]> {
+    const threshold = options?.wordSimilarityThreshold;
+    if (threshold !== undefined && threshold !== 0.25 && threshold !== 0.3) {
+      throw new Error("Unsupported chapter word similarity threshold");
+    }
     const { data, error } = await this.supabase.rpc("search_chapters_bm25", {
       p_project_id: projectId,
       p_query: query,
       p_limit: limit,
+      ...(threshold === undefined ? {} : { p_word_threshold: threshold }),
     });
 
     if (error) throw error;

@@ -38,7 +38,7 @@ async function seedFactCanonSupersedeE2E(): Promise<FactCanonSupersedeSeed | nul
   const projectTitle = `설정 대체 E2E 프로젝트 ${stamp}`;
   const chapterTitle = "정체의 충돌";
   const chapterContent =
-    "리엔은 마을 사람들에게 인간이라고 불렸다. 오래된 기록에는 리엔이 하이엘프라고 적혀 있었다.";
+    "리엔는 마을 사람들에게 인간이라고 불렸다. 오래된 기록에는 리엔가 하이엘프라고 적혀 있었다.";
 
   const { data: userData, error: userError } =
     await supabase.auth.admin.createUser({
@@ -116,7 +116,7 @@ async function seedFactCanonSupersedeE2E(): Promise<FactCanonSupersedeSeed | nul
       fact_type: "ATTRIBUTE",
       fact_key: "species",
       value: "인간이다",
-      evidence_text: "리엔은 마을 사람들에게 인간이라고 불렸다.",
+      evidence_text: "리엔는 마을 사람들에게 인간이라고 불렸다.",
       confidence: 0.84,
       status: "PENDING",
     });
@@ -197,7 +197,7 @@ test.describe("fact canon explicit supersede flow", () => {
     await expect(page.getByText("검토할 세부 설정 (1)")).toBeVisible();
     await expect(page.getByText("기존 승인 설정과 값이 다릅니다")).toBeVisible();
     await expect(page.getByText("하이엘프다")).toBeVisible();
-    await expect(page.getByText("승인해도 기존 설정은 자동으로 바뀌지 않습니다.")).toBeVisible();
+    await expect(page.getByText("체크 버튼은 새 설정으로 따로 저장하고, 회전 버튼은 기존 설정을 이 설정으로 대체합니다.")).toBeVisible();
 
     const before = await fetchOldFact(service, seed.oldFactId);
     expect(before).toEqual({
@@ -228,7 +228,7 @@ test.describe("fact canon explicit supersede flow", () => {
     await expect(page.getByText("승인된 설정")).toBeVisible();
     await expect(page.getByText("인간이다")).toBeVisible();
     await expect(page.locator("main")).toContainText(
-      "1화 · 정체의 충돌 근거: 리엔은 마을 사람들에게 인간이라고 불렸다."
+      "1화 · 정체의 충돌 근거: 리엔는 마을 사람들에게 인간이라고 불렸다."
     );
   });
 });

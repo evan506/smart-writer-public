@@ -18,9 +18,9 @@ export const STARTER_GOLDEN_SCENARIOS: GoldenScenario[] = [
   {
     id: "starter:regression-memory",
     source: "authored:regression",
-    chapterText: `세이람은 회귀 전의 기억을 떠올렸다. 흑철 성채의 화재, 그리고 리엔 하르트의 마지막 말.
-성채 사람들은 아무것도 모른 채 웃고 있었다. 그는 다시 한 번 운명을 바꾸기로 했다.`,
-    shouldExtract: ["세이람", "흑철 성채", "리엔 하르트"],
-    shouldNotExtract: ["성채 사람들"],
+    chapterText: `리겔은 회귀 전의 기억을 떠올렸다. 변방 마을의 불길, 그리고 리엔 하르트의 마지막 말.
+마을 사람들은 아무것도 모른 채 웃고 있었다. 그는 다시 한 번 운명을 바꾸기로 했다.`,
+    shouldExtract: ["리겔", "변방 마을", "리엔 하르트"],
+    shouldNotExtract: ["마을 사람들"],
   },
 ];

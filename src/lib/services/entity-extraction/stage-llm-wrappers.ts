@@ -1,11 +1,14 @@
 
-import { getLLMModel } from "../llm-models";
+import { LLMBudgetError } from "../llm-budget.service";
+import { getLLMModel, getLLMProviderRouting, type LLMProviderRouting } from "../llm-models";
 import {
   callLLM,
   isPermanentProviderError,
   type LLMUsageCallback,
 } from "../llm.service";
 import { mapWithConcurrency } from "./concurrency";
+import { buildClassificationBatchContext, buildProductClassificationBatchContext } from "./classification-context";
+import { STAGE2_EVAL_PROFILE, STAGE2_EVAL_RESPONSE_FORMAT, STAGE2_COMPACT_EVAL_PROFILE, buildStage2CompactEvalPrompt, buildStage2EvalPrompt, type Stage2EvalProfile } from "./stage2-eval-contract";
 
 // Bounded fan-out for Stage 2 classification batches.
 const STAGE2_CONCURRENCY = 4;
@@ -21,10 +24,10 @@ import {
 import {
   attachFallbackContextSnippets,
   extractCoOccurrenceSnippets,
-  extractContextSnippets,
   sourceContainsEvidenceSnippet,
 } from "./snippet-policy";
 import { extractJSONArray } from "./response-parser";
+import { ExtractionStageError } from "./stage-error";
 import { formatKnownEntitiesForPrompt } from "../prompt-templates/prompt-guards";
 
 type LLMParams = {
@@ -34,17 +37,48 @@ type LLMParams = {
   model: string;
   temperature: number;
   onComplete?: LLMUsageCallback;
+  beforeRequest?: () => Promise<void>;
   cacheSystemPrompt?: boolean;
 };
 
 type StageLLMOptions = {
   onComplete?: LLMUsageCallback;
+  beforeRequest?: () => Promise<void>;
 };
+
+// Explicit per-call controls for bounded evaluations. Product callers keep
+// callLLM's retry/routing defaults unless they opt in.
+export type ExtractionValidationDiagnostic = {
+  stage: "stage1" | "stage2";
+  batch: number;
+  candidates: string[];
+  outcome: "valid" | "array_parse" | "shape";
+  fieldPath?: string;
+};
+
+type ExtractionEvalOptions = {
+  stage2EvalProfile?: Stage2EvalProfile;
+  stage2EvalBatchSize?: 5;
+  captureResponseDiagnostics?: boolean;
+  onValidation?: (diagnostic: ExtractionValidationDiagnostic) => void | Promise<void>;
+  /** A factory supplies immutable batch context even when requests finish out of order. */
+  onBatchComplete?: (batch: number, candidates: string[]) => LLMUsageCallback;
+  maxRetries?: number;
+  providerRouting?: LLMProviderRouting;
+};
+
+function evalRequestOptions(options: ExtractionEvalOptions) {
+  return {
+    ...(options.captureResponseDiagnostics ? { captureResponseDiagnostics: true } : {}),
+    ...(options.maxRetries !== undefined ? { maxRetries: options.maxRetries } : {}),
+    ...(options.providerRouting !== undefined ? { provider: options.providerRouting } : {}),
+  };
+}
 
 export async function stage1ExtractNouns(
   chunkText: string,
   excludeNames: string[],
-  options: StageLLMOptions & { guidanceBlock?: string } = {}
+  options: StageLLMOptions & ExtractionEvalOptions & { guidanceBlock?: string } = {}
 ): Promise<string[]> {
   const { system, user } = buildStage1NounExtractionPrompt(
     chunkText,
@@ -60,62 +94,64 @@ export async function stage1ExtractNouns(
       model: getLLMModel("extraction"),
       temperature: 0.1,
       onComplete: options.onComplete,
+      beforeRequest: options.beforeRequest,
       // Identical system prompt across every chunk of a save burst.
       cacheSystemPrompt: true,
+      ...evalRequestOptions(options),
     });
 
     const parsed = extractJSONArray(raw);
-    if (parsed) {
-      return parsed.filter((n): n is string => typeof n === "string" && n.length > 0);
+    await options.onValidation?.({ stage: "stage1", batch: 1, candidates: [],
+      outcome: !parsed ? "array_parse" : parsed.every(isNonEmptyString) ? "valid" : "shape",
+      ... (parsed && !parsed.every(isNonEmptyString) ? { fieldPath: `[${parsed.findIndex((v) => !isNonEmptyString(v))}]` } : {}),
+    });
+    if (!parsed || !parsed.every(isNonEmptyString)) {
+      throw new ExtractionStageError("stage1", "invalid response");
     }
-    // 정규식 폴백: 따옴표 안 문자열 추출
-    const matches = raw.match(/"([^"]+)"/g);
-    if (matches) {
-      return matches.map((m) => m.replace(/"/g, "")).filter(Boolean);
-    }
-  } catch (e) {
-    // Config errors (401/403/404 …) fail every chunk identically — escalate
-    // so the analysis job is marked FAILED instead of "done with 0 results".
-    if (isPermanentProviderError(e)) throw e;
-    console.error("[EntityExtraction] stage1 noun extraction failed:", e instanceof Error ? e.message : e);
+    return parsed;
+  } catch (error) {
+    throwStageError("stage1", error);
   }
-
-  return [];
 }
 
 export async function stage2Classify(
   candidates: string[],
   fullText: string,
   confirmedEntities: KnownEntity[],
-  options: StageLLMOptions & { guidanceBlock?: string } = {}
+  options: StageLLMOptions & ExtractionEvalOptions & {
+    guidanceBlock?: string;
+    stage2Concurrency?: number;
+  } = {}
 ): Promise<ClassifiedEntity[]> {
+  if (options.stage2EvalProfile !== undefined && options.stage2EvalProfile !== STAGE2_EVAL_PROFILE &&
+      options.stage2EvalProfile !== STAGE2_COMPACT_EVAL_PROFILE) {
+    throw new Error("Unsupported Stage2 evaluation profile");
+  }
+  const buildContext = options.stage2EvalProfile === undefined
+    ? buildProductClassificationBatchContext : buildClassificationBatchContext;
   const guidanceBlock = options.guidanceBlock ?? "";
-  // 문맥 스니펫 구성
-  const snippetMap = new Map<string, string>();
-  const candidatesWithSnippets = candidates
-    .map((name) => {
-      const snippets = extractContextSnippets(fullText, name);
-      if (snippets[0]) snippetMap.set(name, snippets[0]);
-      const snippetText = snippets.length > 0
-        ? snippets.map((s) => `  "${s.replace(/"/g, "'")}"` ).join("\n")
-        : "  (스니펫 없음)";
-      return `- **${name}**\n${snippetText}`;
-    })
-    .join("\n\n");
-
   const confirmedList = formatKnownEntitiesForPrompt(confirmedEntities);
 
   // 10개 초과면 분할한다. 실제 장편 원고에서는 후보 15~20개 응답도
   // 길어져 JSON이 깨질 수 있어 작은 배치가 더 안정적이다.
-  const BATCH_SIZE = 10;
+  if (options.stage2EvalBatchSize !== undefined &&
+      (options.stage2EvalProfile !== STAGE2_EVAL_PROFILE || options.stage2EvalBatchSize !== 5)) {
+    throw new Error("Stage2 batch size requires the explicit evaluation profile and size 5");
+  }
+  const BATCH_SIZE = options.stage2EvalBatchSize ?? 10;
   const allResults: ClassifiedEntity[] = [];
 
   if (candidates.length <= BATCH_SIZE) {
+    const { payload, snippetMap } = buildContext(candidates, fullText);
     const result = await callStage2LLM(
-      candidatesWithSnippets,
+      payload,
       confirmedList,
       options.onComplete,
-      guidanceBlock
+      guidanceBlock,
+      options.beforeRequest,
+      options,
+      1,
+      candidates
     );
     allResults.push(...attachValidatedContextSnippets(result, snippetMap, fullText));
   } else {
@@ -127,26 +163,20 @@ export async function stage2Classify(
     }
     const batchResults = await mapWithConcurrency(
       batches,
-      STAGE2_CONCURRENCY,
-      async (batch) => {
-        const batchSnippetMap = new Map<string, string>();
-        const batchSnippets = batch
-          .map((name) => {
-            const snippets = extractContextSnippets(fullText, name);
-            if (snippets[0]) batchSnippetMap.set(name, snippets[0]);
-            const snippetText = snippets.length > 0
-              ? snippets.map((s) => `  "${s.replace(/"/g, "'")}"` ).join("\n")
-              : "  (스니펫 없음)";
-            return `- **${name}**\n${snippetText}`;
-          })
-          .join("\n\n");
+      options.stage2Concurrency ?? STAGE2_CONCURRENCY,
+      async (batch, batchIndex) => {
+        const { payload, snippetMap } = buildContext(batch, fullText);
         const result = await callStage2LLM(
-          batchSnippets,
+          payload,
           confirmedList,
           options.onComplete,
-          guidanceBlock
+          guidanceBlock,
+          options.beforeRequest,
+          options,
+          batchIndex + 1,
+          batch
         );
-        return attachValidatedContextSnippets(result, batchSnippetMap, fullText);
+        return attachValidatedContextSnippets(result, snippetMap, fullText);
       }
     );
     for (const result of batchResults) {
@@ -187,9 +217,16 @@ async function callStage2LLM(
   candidatesWithSnippets: string,
   confirmedEntities: string,
   onComplete?: LLMUsageCallback,
-  guidanceBlock = ""
+  guidanceBlock = "",
+  beforeRequest?: () => Promise<void>,
+  evalOptions: ExtractionEvalOptions = {},
+  batch = 1,
+  candidates: string[] = []
 ): Promise<ClassifiedEntity[]> {
-  const { system, user } = buildStage2ClassificationPrompt(
+  const structuredEval = evalOptions.stage2EvalProfile === STAGE2_EVAL_PROFILE;
+  const buildPrompt = structuredEval ? buildStage2EvalPrompt :
+    evalOptions.stage2EvalProfile === STAGE2_COMPACT_EVAL_PROFILE ? buildStage2CompactEvalPrompt : buildStage2ClassificationPrompt;
+  const { system, user } = buildPrompt(
     candidatesWithSnippets,
     confirmedEntities,
     guidanceBlock
@@ -202,27 +239,32 @@ async function callStage2LLM(
       maxTokens: 2048,
       model: getLLMModel("extraction"),
       temperature: 0.1,
-      onComplete,
+      onComplete: evalOptions.onBatchComplete?.(batch, [...candidates]) ?? onComplete,
+      beforeRequest,
       // Identical system prompt (incl. guidance block) across stage-2 batches.
       cacheSystemPrompt: true,
+      ...evalRequestOptions(evalOptions),
+      ...(structuredEval ? {
+        responseFormat: STAGE2_EVAL_RESPONSE_FORMAT,
+        provider: { ...(evalOptions.providerRouting ?? getLLMProviderRouting()), require_parameters: true },
+      } : {}),
     });
 
-    const parsed = extractJSONArray(raw);
-    if (parsed) {
-      return parsed.filter(
-        (c: unknown): c is ClassifiedEntity => {
-          const obj = c as Record<string, unknown>;
-          return obj != null && typeof obj.name === "string" && typeof obj.type === "string";
-        }
-      );
+    const envelope: { array: unknown[] | null; fieldPath?: string } = structuredEval ? parseStage2EvalEnvelope(raw) : { array: extractJSONArray(raw) };
+    const parsed = envelope.array;
+    const invalidIndex = parsed?.findIndex((value) => classifiedEntityIssue(value) !== undefined) ?? -1;
+    await evalOptions.onValidation?.({ stage: "stage2", batch, candidates: [...candidates],
+      outcome: envelope.fieldPath ? "shape" : !parsed ? "array_parse" : invalidIndex >= 0 ? "shape" : "valid",
+      ...(envelope.fieldPath ? { fieldPath: envelope.fieldPath } :
+        parsed && invalidIndex >= 0 ? { fieldPath: `[${invalidIndex}]${classifiedEntityIssue(parsed[invalidIndex])}` } : {}),
+    });
+    if (!parsed || !parsed.every(isClassifiedEntity)) {
+      throw new ExtractionStageError("stage2", "invalid response");
     }
-    console.warn("[EntityExtraction] stage2 parse failed");
-  } catch (e) {
-    if (isPermanentProviderError(e)) throw e;
-    console.error("[EntityExtraction] stage2 classification failed:", e instanceof Error ? e.message : e);
+    return parsed;
+  } catch (error) {
+    throwStageError("stage2", error);
   }
-
-  return [];
 }
 
 export async function stage3ExtractRelations(
@@ -267,54 +309,130 @@ export async function stage3ExtractRelations(
     model: getLLMModel("extraction"),
     temperature: 0.1,
     onComplete: options.onComplete,
+    beforeRequest: options.beforeRequest,
     cacheSystemPrompt: true,
   };
 
-  // 1차 시도
-  let result = await callAndParseRelations(llmParams);
-  if (result) return filterSourceBackedRelations(result, chapterContent);
+  try {
+    const result = await callAndParseRelations(llmParams);
+    return filterSourceBackedRelations(result, chapterContent);
+  } catch (error) {
+    // Preserve the existing single minimal-prompt retry. Budget and permanent
+    // provider failures must propagate unchanged and never trigger a retry.
+    if (!(error instanceof ExtractionStageError)) throw error;
+  }
 
-  // 2차 시도: minimal 프롬프트로 재시도
-  console.warn("[EntityExtraction] stage3 parse failed, retrying with minimal prompt...");
+  console.warn("[EntityExtraction] stage3 failed, retrying with minimal prompt...");
   const { system: minSys, user: minUser } = buildStage3MinimalRelationPrompt(
     entityListWithTypes,
     snippetText
   );
-  result = await callAndParseRelations({ ...llmParams, system: minSys, user: minUser });
-  if (result) {
-    console.log("[EntityExtraction] stage3 recovered with minimal prompt");
-    return filterSourceBackedRelations(result, chapterContent);
-  }
-
-  console.warn("[EntityExtraction] stage3 parse failed after minimal retry");
-  return [];
+  const result = await callAndParseRelations({ ...llmParams, system: minSys, user: minUser });
+  return filterSourceBackedRelations(result, chapterContent);
 }
 
-async function callAndParseRelations(params: LLMParams): Promise<ExtractedRelation[] | null> {
+async function callAndParseRelations(params: LLMParams): Promise<ExtractedRelation[]> {
   try {
     const raw = await callLLM(params);
     const parsed = extractJSONArray(raw);
-    if (parsed) {
-      return parsed.filter(
-        (r: unknown): r is ExtractedRelation => {
-          const obj = r as Record<string, unknown>;
-          return (
-            obj != null &&
-            typeof obj.from_name === "string" &&
-            typeof obj.to_name === "string" &&
-            typeof obj.relation_type === "string" &&
-            (obj.direction === "UNI" || obj.direction === "BI") &&
-            typeof obj.weight === "number" &&
-            typeof obj.context_snippet === "string"
-          );
-        }
-      );
+    if (!parsed || !parsed.every(isExtractedRelation)) {
+      throw new ExtractionStageError("stage3", "invalid response");
     }
-  } catch (e) {
-    if (isPermanentProviderError(e)) throw e;
-    console.error("[EntityExtraction] stage3 LLM call failed:", e instanceof Error ? e.message : e);
+    return parsed;
+  } catch (error) {
+    throwStageError("stage3", error);
   }
-  return null;
+}
+
+function throwStageError(stage: ExtractionStageError["stage"], error: unknown): never {
+  if (
+    error instanceof LLMBudgetError ||
+    isPermanentProviderError(error) ||
+    error instanceof ExtractionStageError
+  ) throw error;
+  throw new ExtractionStageError(stage, "request failed", error);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function isConfidence(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+
+/** Strict envelope only for the explicit evaluation profile; legacy repair stays unchanged. */
+function parseStage2EvalEnvelope(raw: string): { array: unknown[] | null; fieldPath?: string } {
+  let decoded: unknown;
+  try { decoded = JSON.parse(raw); } catch { return { array: null }; }
+  if (!isRecord(decoded) || !Array.isArray(decoded.entities)) {
+    return { array: null, fieldPath: ".entities" };
+  }
+  if (Object.keys(decoded).length !== 1) return { array: null, fieldPath: ".root" };
+  const itemSchema = STAGE2_EVAL_RESPONSE_FORMAT.json_schema.schema.properties.entities.items;
+  const entityKeys = new Set(Object.keys(itemSchema.properties));
+  const factKeys = new Set(Object.keys(itemSchema.properties.facts.items.properties));
+  for (let i = 0; i < decoded.entities.length; i++) {
+    const entity: unknown = decoded.entities[i];
+    if (!isRecord(entity)) continue; // Existing row validation reports its shape.
+    const extra = Object.keys(entity).find((key) => !entityKeys.has(key));
+    if (extra) return { array: null, fieldPath: `[${i}].${extra}` };
+    if (!Array.isArray(entity.facts)) continue;
+    for (let j = 0; j < entity.facts.length; j++) {
+      const fact: unknown = entity.facts[j];
+      if (!isRecord(fact)) continue;
+      const factExtra = Object.keys(fact).find((key) => !factKeys.has(key));
+      if (factExtra) return { array: null, fieldPath: `[${i}].facts[${j}].${factExtra}` };
+    }
+  }
+  return { array: decoded.entities };
+}
+
+function classifiedEntityIssue(value: unknown): string | undefined {
+  if (!isRecord(value)) return "";
+  for (const key of ["name", "type"] as const) if (!isNonEmptyString(value[key])) return `.${key}`;
+  if (value.importance !== "high" && value.importance !== "low") return ".importance";
+  if (typeof value.summary !== "string") return ".summary";
+  if (!isConfidence(value.confidence)) return ".confidence";
+  for (const key of ["sub_type", "alias_of", "context_snippet"] as const) {
+    if (!isOptionalString(value[key])) return `.${key}`;
+  }
+  if (value.facts !== undefined) {
+    if (!Array.isArray(value.facts)) return ".facts";
+    for (let i = 0; i < value.facts.length; i++) {
+      const fact = value.facts[i];
+      if (!isRecord(fact)) return `.facts[${i}]`;
+      for (const key of ["fact_type", "value", "evidence"] as const) {
+        if (typeof fact[key] !== "string") return `.facts[${i}].${key}`;
+      }
+      if (!isOptionalString(fact.fact_key)) return `.facts[${i}].fact_key`;
+      if (fact.confidence !== undefined && !isConfidence(fact.confidence)) return `.facts[${i}].confidence`;
+    }
+  }
+  return undefined;
+}
+
+function isClassifiedEntity(value: unknown): value is ClassifiedEntity {
+  return classifiedEntityIssue(value) === undefined;
+}
+
+function isOptionalString(value: unknown): boolean {
+  return value === undefined || typeof value === "string";
+}
+
+function isExtractedRelation(value: unknown): value is ExtractedRelation {
+  return isRecord(value) &&
+    isNonEmptyString(value.from_name) &&
+    isNonEmptyString(value.to_name) &&
+    isNonEmptyString(value.relation_type) &&
+    (value.direction === "UNI" || value.direction === "BI") &&
+    isConfidence(value.weight) &&
+    typeof value.context_snippet === "string" &&
+    isOptionalString(value.conflict_note);
 }
 
 function filterSourceBackedRelations(

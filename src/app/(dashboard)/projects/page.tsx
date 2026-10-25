@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { isAdminUser } from "@/lib/auth/admin";
 import { createClient } from "@/lib/supabase/server";
 import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { ProjectCard } from "@/components/project-card";
@@ -97,18 +99,19 @@ export default async function ProjectsPage() {
   return (
     <div className="min-h-screen" style={{ background: "var(--sw-bg-base)" }}>
       {/* Top bar */}
-      <header className="flex items-center justify-between border-b border-sw-border-subtle px-8 py-4">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-sw-border-subtle px-4 py-3 sm:px-8 sm:py-4">
         <span className="text-lg font-black tracking-tight text-sw-text-primary">
           ✦ Smart Writer
         </span>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
+          {isAdminUser(user?.id) && <Link href="/admin" className="inline-flex min-h-11 items-center text-xs text-sw-text-muted hover:text-sw-text-primary">AI 운영 현황</Link>}
           {user?.email && (
-            <span className="text-sm text-sw-text-muted">{user.email}</span>
+            <span className="hidden text-sm text-sw-text-muted sm:inline">{user.email}</span>
           )}
           <form action={logout}>
             <button
               type="submit"
-              className="text-xs text-sw-text-muted transition-colors hover:text-sw-text-primary"
+              className="inline-flex min-h-11 items-center text-xs text-sw-text-muted transition-colors hover:text-sw-text-primary"
             >
               로그아웃
             </button>
@@ -117,7 +120,7 @@ export default async function ProjectsPage() {
       </header>
 
       {/* Content */}
-      <main className="mx-auto max-w-[1100px] px-8 py-8">
+      <main className="mx-auto max-w-[1100px] px-4 py-6 sm:px-8 sm:py-8">
         {!projectList.length ? (
           <EmptyState />
         ) : (

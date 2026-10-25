@@ -34,7 +34,8 @@ vi.mock("@/lib/services", () => ({
     return { analyze: analyzeMock };
   }),
   checkLLMBudget: checkLLMBudgetMock,
-  LLM_BUDGET_BLOCKED_MESSAGE:
+  getLLMBudgetMessage: (decision: {reason: string}) => decision.reason === "unavailable" ? "AI 사용 한도를 확인할 수 없습니다." :
+
     "이 프로젝트의 AI 사용 한도에 도달했습니다. 한도가 초기화된 후 다시 시도해 주세요.",
 }));
 
@@ -75,7 +76,7 @@ describe("chapters-actions LLM budget guard", () => {
 
     expect(result).toEqual({ error: null, budgetBlocked: true });
     expect(afterMock).not.toHaveBeenCalled();
-    expect(revalidatePathMock).toHaveBeenCalledWith(`/projects/${projectId}`);
+    expect(revalidatePathMock).not.toHaveBeenCalled();
   });
 
   it("saveChapter schedules after() and reports budgetBlocked false when under budget", async () => {
@@ -134,4 +135,33 @@ describe("chapters-actions LLM budget guard", () => {
     expect(result.error).toBeNull();
     expect(analyzeMock).toHaveBeenCalledTimes(1);
   });
+  it.each(["decision", "exception"])("preserves the completed save when budget verification is unavailable (%s)", async (mode) => {
+    const client = makeClient();
+    createClientMock.mockResolvedValue(client);
+    if (mode === "exception") checkLLMBudgetMock.mockRejectedValueOnce(new Error("network failed"));
+    else checkLLMBudgetMock.mockResolvedValueOnce({ allowed: false, reason: "unavailable" });
+    const { saveChapter } = await importActions();
+    expect(await saveChapter(chapterId, projectId, "제목", "본문"))
+      .toEqual({ error: null, budgetBlocked: true, budgetReason: "unavailable" });
+    expect(client.from).toHaveBeenCalledWith("chapters");
+    expect(client.from.mock.results[0].value.update).toHaveBeenCalled();
+    expect(afterMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves the save when registering background work fails", async () => {
+    checkLLMBudgetMock.mockResolvedValueOnce({ allowed: true, reason: null });
+    afterMock.mockImplementationOnce(() => { throw new Error("background unavailable"); });
+    const { saveChapter } = await importActions();
+    expect(await saveChapter(chapterId, projectId, "제목", "본문"))
+      .toEqual({ error: null, budgetBlocked: true, budgetReason: "unavailable" });
+  });
+
+  it("uses the unavailable message for analysis verification failures", async () => {
+    checkLLMBudgetMock.mockResolvedValueOnce({ allowed: false, reason: "unavailable" });
+    const { analyzeChapter } = await importActions();
+    expect(await analyzeChapter(chapterId, projectId, "본문"))
+      .toEqual({ error: "AI 사용 한도를 확인할 수 없습니다.", result: null });
+    expect(analyzeMock).not.toHaveBeenCalled();
+  });
+
 });

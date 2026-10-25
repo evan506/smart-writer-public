@@ -46,6 +46,7 @@ interface EntityPluginState {
   entities: EntityHighlightItem[];
   selectedEntityId: string | null;
   decos: DecorationSet;
+  matchers: NameMatcher[];
 }
 
 type EntityHighlightPayload =
@@ -82,6 +83,9 @@ function buildTextIndex(doc: PmNode): TextNodeEntry[] {
         textEnd: offset + node.text.length,
       });
       offset += node.text.length;
+    } else if (node.isLeaf) {
+      // Match textBetween's one-character boundary for inline leaves (hard breaks).
+      offset += 1;
     }
   });
   return entries;
@@ -106,43 +110,39 @@ function textOffsetToPos(index: TextNodeEntry[], offset: number): number {
 
 // ── Core: build DecorationSet from entities ──
 
-function buildDecorations(
-  doc: PmNode,
-  entities: EntityHighlightItem[],
-  selectedEntityId: string | null = null
-): DecorationSet {
-  if (entities.length === 0) return DecorationSet.empty;
+interface NameMatcher {
+  entity: EntityHighlightItem;
+  regex: RegExp;
+}
 
-  // Flatten name + aliases into match entries, filter empty strings
-  const nameEntries: { entity: EntityHighlightItem; match: string }[] = [];
-  for (const e of entities) {
-    if (e.name.trim()) {
-      nameEntries.push({ entity: e, match: e.name.trim() });
-    }
-    for (const alias of e.aliases) {
-      if (alias.trim()) {
-        nameEntries.push({ entity: e, match: alias.trim() });
-      }
-    }
-  }
-  if (nameEntries.length === 0) return DecorationSet.empty;
+function compileMatchers(entities: EntityHighlightItem[]): NameMatcher[] {
+  const entries = entities.flatMap((entity) => [entity.name, ...entity.aliases]
+    .map((name) => name.trim()).filter(Boolean)
+    .map((name) => ({ entity, name })));
+  entries.sort((a, b) => b.name.length - a.name.length);
+  return entries.map(({ entity, name }) => ({ entity, regex: new RegExp(escapeRegex(name), "g") }));
+}
 
-  // Sort longest first so longer names match before shorter aliases
-  nameEntries.sort((a, b) => b.match.length - a.match.length);
+// Match within text blocks so names cannot span unrelated paragraphs.
+function buildBlockDecorations(
+  block: PmNode,
+  blockPos: number,
+  matchers: NameMatcher[],
+  selectedEntityId: string | null
+): Decoration[] {
+  const fullText = block.textBetween(0, block.content.size, "", "\n");
+  if (!fullText) return [];
 
-  const fullText = doc.textContent;
-  if (!fullText) return DecorationSet.empty;
-
-  const index = buildTextIndex(doc);
+  const index = buildTextIndex(block);
   const decorations: Decoration[] = [];
 
   // Track covered text ranges to avoid overlapping decorations
-  const covered: [number, number][] = [];
+  const covered = new Uint8Array(fullText.length);
 
-  for (const { entity, match: name } of nameEntries) {
+  for (const { entity, regex } of matchers) {
     const type = entity.type;
     const style = ENTITY_STYLES[type] ?? { bg: "rgba(148,163,184,0.12)", border: "#94a3b8" };
-    const regex = new RegExp(escapeRegex(name), "g");
+    regex.lastIndex = 0;
     let match: RegExpExecArray | null;
 
     while ((match = regex.exec(fullText)) !== null) {
@@ -150,16 +150,16 @@ function buildDecorations(
       const tEnd = tStart + match[0].length;
 
       // Skip if overlapping with an already decorated range
-      if (covered.some(([s, e]) => tStart < e && tEnd > s)) continue;
+      if (covered.subarray(tStart, tEnd).some(Boolean)) continue;
 
       const from = textOffsetToPos(index, tStart);
       const to = textOffsetToPos(index, tEnd);
 
       if (from !== -1 && to !== -1 && from < to) {
         const isSelected = entity.id === selectedEntityId;
-        covered.push([tStart, tEnd]);
+        covered.fill(1, tStart, tEnd);
         decorations.push(
-          Decoration.inline(from, to, {
+          Decoration.inline(blockPos + 1 + from, blockPos + 1 + to, {
             style: [
               `background: ${isSelected ? "rgba(255,255,255,0.12)" : style.bg}`,
               `text-decoration-line: underline`,
@@ -173,7 +173,7 @@ function buildDecorations(
             "data-entity-id": entity.id,
             "data-entity-name": entity.name,
             "data-entity-type": type,
-            "data-entity-match": name,
+            "data-entity-match": match[0],
             "data-entity-selected": isSelected ? "true" : "false",
           })
         );
@@ -181,7 +181,21 @@ function buildDecorations(
     }
   }
 
-  if (decorations.length === 0) return DecorationSet.empty;
+  return decorations;
+}
+
+function buildDecorations(
+  doc: PmNode,
+  matchers: NameMatcher[],
+  selectedEntityId: string | null
+): DecorationSet {
+  if (matchers.length === 0) return DecorationSet.empty;
+  const decorations: Decoration[] = [];
+  doc.descendants((node, pos) => {
+    if (!node.isTextblock) return;
+    decorations.push(...buildBlockDecorations(node, pos, matchers, selectedEntityId));
+    return false;
+  });
   return DecorationSet.create(doc, decorations);
 }
 
@@ -215,6 +229,7 @@ export const EntityHighlightExtension = Extension.create({
               entities: [],
               selectedEntityId: null,
               decos: DecorationSet.empty,
+              matchers: [],
             };
           },
 
@@ -226,28 +241,45 @@ export const EntityHighlightExtension = Extension.create({
 
             // Entities updated via setEntityHighlights()
             if (payload) {
+              const matchers = payload.entities === prev.entities ? prev.matchers : compileMatchers(payload.entities);
               return {
                 entities: payload.entities,
                 selectedEntityId: payload.selectedEntityId,
+                matchers,
                 decos: buildDecorations(
                   tr.doc,
-                  payload.entities,
+                  matchers,
                   payload.selectedEntityId
                 ),
               };
             }
 
-            // Doc changed — re-apply current entities
-            if (tr.docChanged && prev.entities.length > 0) {
-              return {
-                entities: prev.entities,
-                selectedEntityId: prev.selectedEntityId,
-                decos: buildDecorations(
-                  tr.doc,
-                  prev.entities,
-                  prev.selectedEntityId
-                ),
-              };
+            // Map unaffected decorations; only rescan text blocks touched by steps.
+            if (tr.docChanged && prev.matchers.length > 0) {
+              const ranges: { from: number; to: number }[] = [];
+              tr.mapping.maps.forEach((map, i) => {
+                const remaining = tr.mapping.slice(i + 1);
+                map.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+                  ranges.push({ from: remaining.map(newStart, -1), to: remaining.map(newEnd, 1) });
+                });
+              });
+              // A custom step without ranges still needs a complete refresh.
+              if (ranges.length === 0) {
+                return { ...prev, decos: buildDecorations(tr.doc, prev.matchers, prev.selectedEntityId) };
+              }
+              let decos = prev.decos.map(tr.mapping, tr.doc);
+              const additions: Decoration[] = [];
+              const removals: Decoration[] = [];
+              tr.doc.descendants((node, pos) => {
+                if (!node.isTextblock) return;
+                if (ranges.some(({ from, to }) => pos <= to && pos + node.nodeSize >= from)) {
+                  removals.push(...decos.find(pos, pos + node.nodeSize));
+                  additions.push(...buildBlockDecorations(node, pos, prev.matchers, prev.selectedEntityId));
+                }
+                return false;
+              });
+              decos = decos.remove(removals).add(tr.doc, additions);
+              return { ...prev, decos };
             }
 
             return prev;

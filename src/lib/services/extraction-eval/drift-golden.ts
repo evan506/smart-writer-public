@@ -1,5 +1,5 @@
 // Build a DRIFT golden from a prior extraction-run result (e.g.
-// references/test-data/sample/sample-extraction-result.json).
+// references/test-data/blackiron/blackiron-extraction-result.json).
 //
 // HONESTY: this is NOT a correctness golden. The "expected" names are the
 // extractor's OWN past output, so scoring against them measures drift /

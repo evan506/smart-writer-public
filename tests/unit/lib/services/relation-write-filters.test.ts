@@ -9,7 +9,7 @@ function relation(input: Partial<ExtractedRelation>): ExtractedRelation {
     relation_type: "ALLY",
     direction: "BI",
     weight: 0.8,
-    context_snippet: "리엔과 미라는 함께 마족에게 맞서 싸웠다.",
+    context_snippet: "리엔와 미라는 함께 마족에게 맞서 싸웠다.",
     ...input,
   };
 }
@@ -29,12 +29,12 @@ describe("relation write filters", () => {
       const result = filterValidRelations(
         [
           relation({
-            context_snippet: "리엔과 미라는 같은 방에 있었다.",
+            context_snippet: "리엔와 미라는 같은 방에 있었다.",
           }),
           relation({
             to_name: "검은 탑",
             relation_type: "ALLY",
-            context_snippet: "리엔은 검은 탑에서 오래된 문장을 발견했다.",
+            context_snippet: "리엔는 검은 탑에서 오래된 문장을 발견했다.",
           }),
           relation({}),
         ],

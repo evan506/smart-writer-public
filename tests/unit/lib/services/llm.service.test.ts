@@ -362,3 +362,44 @@ describe("callLLM", () => {
     );
   });
 });
+
+
+describe("paid-attempt budget boundary", () => {
+  it("checks before every provider retry and never logs a rejected check as usage",async()=>{
+    const { LLMBudgetError }=await import("@/lib/services/llm-budget.service");
+    const create=vi.fn().mockRejectedValue({status:503});
+    const beforeRequest=vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new LLMBudgetError("monthly"));
+    const onComplete=vi.fn();
+    await expect(callLLM({system:"system",user:"user",client:chatClient(create) as never,
+      beforeRequest,onComplete,retryDelayMs:0})).rejects.toMatchObject({reason:"monthly"});
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(beforeRequest).toHaveBeenCalledTimes(2);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(onComplete).toHaveBeenCalledWith(expect.objectContaining({
+      success: false, retryCount: 0, errorType: "provider_status_503",
+    }));
+    expect(onComplete.mock.calls[0][0].costUsd).toBeUndefined();
+  });
+  it("does not retry or duplicate logging after strict persistence failure",async()=>{
+    const { LLMBudgetError }=await import("@/lib/services/llm-budget.service");
+    const create=vi.fn(async()=>completion("response"));
+    const onComplete=vi.fn().mockRejectedValue(new LLMBudgetError("unavailable"));
+    await expect(callLLM({system:"system",user:"user",client:chatClient(create) as never,onComplete}))
+      .rejects.toMatchObject({reason:"unavailable"});
+    expect(create).toHaveBeenCalledTimes(1);expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+});
+
+it("sends structured output only when explicitly requested and returns the same string contract", async () => {
+  const create = vi.fn(async (_request: unknown, _options?: unknown) => { void _request; void _options; return completion('{"entities":[]}'); });
+  const responseFormat = { type: "json_schema" as const, json_schema: { name: "test_entities", strict: true,
+    schema: { type: "object", properties: { entities: { type: "array", items: { type: "object" } } }, required: ["entities"] } } };
+  await expect(callLLM({ system: "s", user: "u", client: chatClient(create) as never,
+    responseFormat, provider: { only: ["anthropic"], require_parameters: true } })).resolves.toBe('{"entities":[]}');
+  expect(create.mock.calls[0][0]).toMatchObject({ response_format: responseFormat,
+    provider: { only: ["anthropic"], require_parameters: true } });
+  expect(create.mock.calls[0][0]).not.toHaveProperty("responseFormat");
+  await callLLM({ system: "s", user: "u", client: chatClient(create) as never });
+  expect(create.mock.calls[1][0]).not.toHaveProperty("response_format");
+  expect(create.mock.calls[1][0]).not.toHaveProperty("provider.require_parameters");
+});

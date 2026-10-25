@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 
@@ -31,11 +32,19 @@ export type AuthSeed = {
 };
 
 function isLocalUrl(url: string) {
-  return (
-    url.includes("127.0.0.1") ||
-    url.includes("localhost") ||
-    url.includes("host.docker.internal")
-  );
+  try {
+    const parsed = new URL(url);
+    return (
+      ["http:", "https:"].includes(parsed.protocol) &&
+      !parsed.username &&
+      !parsed.password &&
+      ["127.0.0.1", "localhost", "[::1]", "host.docker.internal"].includes(
+        parsed.hostname
+      )
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function getAuthE2EEnv(): AuthE2EEnv {
@@ -89,7 +98,8 @@ export async function seedAuthenticatedE2E(): Promise<AuthSeed | null> {
 
   const supabase = serviceClient(env.url, env.serviceKey);
   const stamp = Date.now();
-  const email = `smartwriter.e2e.auth.${stamp}@example.com`;
+  const runId = randomUUID();
+  const email = `smartwriter.e2e.auth.${runId}@example.com`;
   const password = "SmartWriter-auth-e2e-1234!";
   const projectTitle = `인증 E2E 프로젝트 ${stamp}`;
   const chapterTitle = "첫 장면";
@@ -106,160 +116,196 @@ export async function seedAuthenticatedE2E(): Promise<AuthSeed | null> {
 
   const userId = userData.user.id;
 
-  const { data: project, error: projectError } = await supabase
-    .from("projects")
-    .insert({
-      user_id: userId,
-      title: projectTitle,
-      genre: "판타지",
-      description: "authenticated e2e fixture",
-      metadata: { testRun: "auth-e2e", stamp },
-    })
-    .select("id")
-    .single();
-  if (projectError) throw projectError;
+  try {
+    const { data: project, error: projectError } = await supabase
+      .from("projects")
+      .insert({
+        user_id: userId,
+        title: projectTitle,
+        genre: "판타지",
+        description: "authenticated e2e fixture",
+        metadata: { testRun: "auth-e2e", stamp },
+      })
+      .select("id")
+      .single();
+    if (projectError) throw projectError;
 
-  const { data: chapter, error: chapterError } = await supabase
-    .from("chapters")
-    .insert({
-      project_id: project.id,
-      chapter_num: 1,
-      title: chapterTitle,
-      content: chapterContent,
-      word_count: chapterContent.replace(/\s/g, "").length,
-    })
-    .select("id")
-    .single();
-  if (chapterError) throw chapterError;
+    const { data: chapter, error: chapterError } = await supabase
+      .from("chapters")
+      .insert({
+        project_id: project.id,
+        chapter_num: 1,
+        title: chapterTitle,
+        content: chapterContent,
+        word_count: chapterContent.replace(/\s/g, "").length,
+      })
+      .select("id")
+      .single();
+    if (chapterError) throw chapterError;
 
-  const { data: entities, error: entityError } = await supabase
-    .from("entities")
-    .insert([
-      {
-        project_id: project.id,
-        name: "리엔",
-        type: "CHARACTER",
-        summary: "인증 e2e용 인물",
-        aliases: ["렌"],
-        metadata: { importance: "MAIN" },
-      },
-      {
-        project_id: project.id,
-        name: "검은 서고",
-        type: "PLACE",
-        summary: "인증 e2e용 장소",
-        aliases: [],
-        metadata: { importance: "SUPPORTING" },
-      },
-      {
-        project_id: project.id,
-        name: "검은 관리자",
-        type: "ORGANIZATION",
-        summary: "인증 e2e용 관계 대상",
-        aliases: [],
-        metadata: { importance: "SUPPORTING" },
-      },
-      {
-        project_id: project.id,
-        name: "별빛 정원",
-        type: "PLACE",
-        summary: "인증 e2e용 필터 빈 상태 대상",
-        aliases: [],
-        metadata: { importance: "MINOR" },
-      },
-    ])
-    .select("id, name");
-  if (entityError) throw entityError;
-  if (!entities) throw new Error("Failed to create authenticated e2e entities");
-
-  const entityIds = {
-    rien: entities.find((entity) => entity.name === "리엔")!.id,
-    blackArchive: entities.find((entity) => entity.name === "검은 서고")!.id,
-    blackCustodian: entities.find((entity) => entity.name === "검은 관리자")!.id,
-    starlightGarden: entities.find((entity) => entity.name === "별빛 정원")!.id,
-  };
-
-  const { error: linkError } = await supabase.from("entity_links").insert({
-    from_id: entityIds.rien,
-    to_id: entityIds.blackCustodian,
-    relation_type: "ALLY",
-    direction: "BI",
-    description: "focused write workspace QA relation",
-    weight: 1,
-  });
-  if (linkError) throw linkError;
-
-  const { error: suggestionError } = await supabase
-    .from("entity_suggestions")
-    .insert([
-      {
-        project_id: project.id,
-        chapter_id: chapter.id,
-        name: "푸른 문",
-        type: "PLACE",
-        summary: "다음 장면의 단서로 등장하는 장소 후보",
-        aliases: [],
-        confidence: 0.81,
-        context_snippet: "푸른 문은 다음 장면의 단서로 등장했다.",
-        status: "PENDING",
-        suggested_action: "CREATE",
-      },
-      {
-        project_id: project.id,
-        chapter_id: chapter.id,
-        name: "리엔 → 검은 서고",
-        type: "RELATION",
-        summary: "LOCATED_IN",
-        aliases: {
-          from_name: "리엔",
-          to_name: "검은 서고",
-          relation_type: "LOCATED_IN",
-          direction: "UNI",
-          weight: 0.9,
+    const { data: entities, error: entityError } = await supabase
+      .from("entities")
+      .insert([
+        {
+          project_id: project.id,
+          name: "리엔",
+          type: "CHARACTER",
+          summary: "인증 e2e용 인물",
+          aliases: ["렌"],
+          metadata: { importance: "MAIN" },
         },
-        confidence: 0.86,
-        context_snippet: "리엔은 검은 서고에서 오래된 단서를 발견했다.",
-        status: "PENDING",
-        suggested_action: "CREATE",
-      },
-    ]);
-  if (suggestionError) throw suggestionError;
+        {
+          project_id: project.id,
+          name: "검은 서고",
+          type: "PLACE",
+          summary: "인증 e2e용 장소",
+          aliases: [],
+          metadata: { importance: "SUPPORTING" },
+        },
+        {
+          project_id: project.id,
+          name: "검은 관리자",
+          type: "ORGANIZATION",
+          summary: "인증 e2e용 관계 대상",
+          aliases: [],
+          metadata: { importance: "SUPPORTING" },
+        },
+        {
+          project_id: project.id,
+          name: "별빛 정원",
+          type: "PLACE",
+          summary: "인증 e2e용 필터 빈 상태 대상",
+          aliases: [],
+          metadata: { importance: "MINOR" },
+        },
+      ])
+      .select("id, name");
+    if (entityError) throw entityError;
+    if (!entities) throw new Error("Failed to create authenticated e2e entities");
 
-  const { error: factSuggestionError } = await supabase
-    .from("fact_suggestions")
-    .insert({
-      project_id: project.id,
-      chapter_id: chapter.id,
-      matched_entity_id: entityIds.rien,
-      fact_type: "STATE",
-      fact_key: "secret",
-      value: "검은 관리자에게 비밀을 숨기고 있다",
-      evidence_text: "렌은 검은 관리자에게 비밀을 숨겼다.",
-      confidence: 0.84,
-      status: "PENDING",
+    const entityIds = {
+      rien: entities.find((entity) => entity.name === "리엔")!.id,
+      blackArchive: entities.find((entity) => entity.name === "검은 서고")!.id,
+      blackCustodian: entities.find((entity) => entity.name === "검은 관리자")!.id,
+      starlightGarden: entities.find((entity) => entity.name === "별빛 정원")!.id,
+    };
+
+    const { error: linkError } = await supabase.from("entity_links").insert({
+      from_id: entityIds.rien,
+      to_id: entityIds.blackCustodian,
+      relation_type: "ALLY",
+      direction: "BI",
+      description: "focused write workspace QA relation",
+      weight: 1,
     });
-  if (factSuggestionError) throw factSuggestionError;
+    if (linkError) throw linkError;
 
-  return {
-    email,
-    password,
-    userId,
-    projectId: project.id,
-    chapterId: chapter.id,
-    entityIds,
-    projectTitle,
-    chapterTitle,
-    chapterContent,
-  };
+    const { error: suggestionError } = await supabase
+      .from("entity_suggestions")
+      .insert([
+        {
+          project_id: project.id,
+          chapter_id: chapter.id,
+          name: "푸른 문",
+          type: "PLACE",
+          summary: "다음 장면의 단서로 등장하는 장소 후보",
+          aliases: [],
+          confidence: 0.81,
+          context_snippet: "푸른 문은 다음 장면의 단서로 등장했다.",
+          status: "PENDING",
+          suggested_action: "CREATE",
+        },
+        {
+          project_id: project.id,
+          chapter_id: chapter.id,
+          name: "리엔 → 검은 서고",
+          type: "RELATION",
+          summary: "LOCATED_IN",
+          aliases: {
+            from_name: "리엔",
+            to_name: "검은 서고",
+            relation_type: "LOCATED_IN",
+            direction: "UNI",
+            weight: 0.9,
+          },
+          confidence: 0.86,
+          context_snippet: "리엔은 검은 서고에서 오래된 단서를 발견했다.",
+          status: "PENDING",
+          suggested_action: "CREATE",
+        },
+      ]);
+    if (suggestionError) throw suggestionError;
+
+    const { error: factSuggestionError } = await supabase
+      .from("fact_suggestions")
+      .insert({
+        project_id: project.id,
+        chapter_id: chapter.id,
+        matched_entity_id: entityIds.rien,
+        fact_type: "STATE",
+        fact_key: "secret",
+        value: "검은 관리자에게 비밀을 숨기고 있다",
+        evidence_text: "렌은 검은 관리자에게 비밀을 숨겼다.",
+        confidence: 0.84,
+        status: "PENDING",
+      });
+    if (factSuggestionError) throw factSuggestionError;
+
+    return {
+      email,
+      password,
+      userId,
+      projectId: project.id,
+      chapterId: chapter.id,
+      entityIds,
+      projectTitle,
+      chapterTitle,
+      chapterContent,
+    };
+  } catch (error) {
+    try {
+      await cleanupUser(supabase, userId);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        `Authenticated E2E setup and cleanup failed for user ${userId}`
+      );
+    }
+    throw error;
+  }
+}
+
+async function cleanupUser(
+  supabase: ReturnType<typeof serviceClient>,
+  userId: string
+) {
+  const errors: unknown[] = [];
+  // The user is unique to this fixture. Deleting by owner also catches a
+  // project whose insert committed before its response failed during setup.
+  try {
+    const { error } = await supabase.from("projects").delete().eq("user_id", userId);
+    if (error) errors.push(error);
+  } catch (error) {
+    errors.push(error);
+  }
+  try {
+    const { error } = await supabase.auth.admin.deleteUser(userId);
+    if (error) errors.push(error);
+  } catch (error) {
+    errors.push(error);
+  }
+  if (errors.length) {
+    throw new AggregateError(errors, `Authenticated E2E cleanup failed for user ${userId}`);
+  }
 }
 
 export async function cleanupAuthenticatedE2E(seed: AuthSeed | null) {
   if (!seed) return;
 
   const env = getAuthE2EEnv();
-  if (!env.enabled) return;
+  if (!env.enabled) {
+    throw new Error(`Cannot clean authenticated E2E user ${seed.userId}: ${env.reason}`);
+  }
 
-  const supabase = serviceClient(env.url, env.serviceKey);
-  await supabase.from("projects").delete().eq("id", seed.projectId);
-  await supabase.auth.admin.deleteUser(seed.userId);
+  await cleanupUser(serviceClient(env.url, env.serviceKey), seed.userId);
 }

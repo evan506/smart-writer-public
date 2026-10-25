@@ -2,12 +2,21 @@ import { Loader2, Wand2, XCircle } from "lucide-react";
 
 export function AnalysisFailedState() {
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", padding: "32px 0", textAlign: "center" }}>
+    <div role="status" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "8px", padding: "16px 0", textAlign: "center" }}>
       <XCircle size={22} style={{ color: "var(--sw-danger)" }} />
       <div>
-        <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--sw-text-muted)", marginBottom: "4px" }}>기억 후보 찾기에 실패했습니다</p>
-        <p style={{ fontSize: "11px", color: "var(--sw-text-ghost)" }}>챕터를 다시 저장하면 설정 후보와 세부 설정 후보를 다시 찾습니다</p>
+        <p style={{ fontSize: "13px", fontWeight: 600, color: "var(--sw-text-muted)", marginBottom: "4px" }}>원고는 저장됐습니다. 기억 정리를 끝내지 못했습니다.</p>
+        <p style={{ fontSize: "11px", color: "var(--sw-text-ghost)" }}>표시된 후보는 일부일 수 있습니다. 원문 근거를 확인해 주세요.</p>
       </div>
+    </div>
+  );
+}
+
+export function AnalysisDelayedState() {
+  return (
+    <div role="status" style={{ padding: "16px 0", textAlign: "center" }}>
+      <p style={{ fontSize: "13px", color: "var(--sw-text-muted)" }}>기억 정리 결과 확인이 지연되고 있습니다</p>
+      <p style={{ fontSize: "11px", color: "var(--sw-text-ghost)" }}>원고는 저장됐습니다. 완료 여부는 아직 확인하지 못했습니다. 나중에 다시 확인해 주세요.</p>
     </div>
   );
 }

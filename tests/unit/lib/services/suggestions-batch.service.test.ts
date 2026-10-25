@@ -4,6 +4,11 @@ import { confirmEntitySuggestionBatch } from "@/lib/services/suggestions/batch.s
 const afterMock = vi.hoisted(() => vi.fn());
 const createClientMock = vi.hoisted(() => vi.fn());
 const embedTextMock = vi.hoisted(() => vi.fn());
+const budgetedOptionsMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/lib/services/budgeted-embedding", () => ({
+  createBudgetedEmbeddingOptions: budgetedOptionsMock,
+}));
 
 vi.mock("next/server", () => ({
   after: afterMock,
@@ -104,6 +109,7 @@ function createBatchClient({
 describe("suggestions batch service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    budgetedOptionsMock.mockReset().mockReturnValue({ onComplete: vi.fn() });
     embedTextMock.mockResolvedValue([0.1, 0.2, 0.3]);
   });
 
@@ -312,5 +318,49 @@ describe("suggestions batch service", () => {
         "project-1"
       )
     ).resolves.toEqual({ error: "status failed", confirmed: 0, skippedMerge: 0 });
+  });
+  it("preserves manual confirmation and forwards owner when optional embedding is blocked", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      budgetedOptionsMock.mockImplementation(() => { throw new Error("budget blocked"); });
+      const rows = ["리엔", "서고"].map((name, i) => ({ id: `entity-${i}`, name, summary: null, aliases: [] }));
+const { client } = createBatchClient({ insertedRows: rows });
+const bg = createBatchClient();
+createClientMock.mockResolvedValue(bg.client);
+const result = await confirmEntitySuggestionBatch(client as never, rows.map((row, i) => ({ ...row, id: `suggestion-${i}`, type: "CHARACTER" })), "project-1", "owner-1");
+      expect(result.error).toBeNull();
+      await expect(afterMock.mock.calls[0][0]()).resolves.toBeUndefined();
+      expect(budgetedOptionsMock).toHaveBeenCalledTimes(1);
+      expect(budgetedOptionsMock).toHaveBeenCalledWith(bg.client, expect.objectContaining({ projectId: "project-1", userId: "owner-1" }));
+      expect(embedTextMock).not.toHaveBeenCalled();
+      expect(bg.operations).toHaveLength(0);
+    } finally { log.mockRestore(); }
+  });
+
+  it("shares logging state and stops later paid calls after the first cost write fails", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const rows = ["리엔", "서고"].map((name, i) => ({ id: `entity-${i}`, name, summary: null, aliases: [] }));
+      const { client } = createBatchClient({ insertedRows: rows });
+      const bg = createBatchClient();
+      createClientMock.mockResolvedValue(bg.client);
+      let loggingFailed = false;
+      let paidCalls = 0;
+      const beforeRequest = vi.fn(async () => { if (loggingFailed) throw new Error("cost write unavailable"); });
+      budgetedOptionsMock.mockReturnValue({ beforeRequest });
+      embedTextMock.mockImplementation(async (_text, options) => {
+        await options.beforeRequest();
+        paidCalls += 1;
+        loggingFailed = true;
+        return [0.1];
+      });
+      const result = await confirmEntitySuggestionBatch(client as never, rows.map((row, i) => ({ ...row, id: `suggestion-${i}`, type: "CHARACTER" })), "project-1", "owner-1");
+      expect(result).toMatchObject({ error: null, confirmed: 2 });
+      await expect(afterMock.mock.calls[0][0]()).resolves.toBeUndefined();
+      expect(budgetedOptionsMock).toHaveBeenCalledTimes(1);
+      expect(beforeRequest).toHaveBeenCalledTimes(2);
+      expect(paidCalls).toBe(1);
+      expect(bg.operations).toHaveLength(1);
+    } finally { log.mockRestore(); }
   });
 });

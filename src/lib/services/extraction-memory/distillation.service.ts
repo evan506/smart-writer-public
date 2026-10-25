@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
+import { createLLMBudgetGuard } from "../llm-budget.service";
 import { callLLM } from "../llm.service";
 import { createLLMUsageLogger } from "../llm-usage-logger.service";
 import { getLLMModel } from "../llm-models";
@@ -159,6 +160,11 @@ export function createDistillationDeps(
         maxTokens: 512,
         model: getLLMModel("distillation"),
         temperature: 0,
+        beforeRequest: usageContext
+          ? createLLMBudgetGuard(supabase, usageContext)
+          : async () => {
+              throw new Error("AI 사용 한도를 확인할 프로젝트 정보가 없습니다.");
+            },
         // Logged under entity_extraction (llm_usage_logs feature enum has no
         // distillation value); the template key disambiguates.
         onComplete: usageContext
@@ -168,7 +174,7 @@ export function createDistillationDeps(
               feature: "entity_extraction",
               promptTemplateKey: "extraction_memory.distillation",
               promptTemplateVersion: getPromptTemplateVersion("extraction_memory.distillation"),
-            })
+            }, { failOnError: true })
           : undefined,
       });
     },

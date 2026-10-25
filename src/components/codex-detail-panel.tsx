@@ -177,9 +177,8 @@ export function CodexDetailPanel({
 
   return (
     <div
-      className="flex flex-col flex-shrink-0 h-full overflow-y-auto sw-scrollbar"
+      className="flex min-w-0 w-full lg:w-[360px] flex-col flex-shrink-0 h-full overflow-y-auto sw-scrollbar"
       style={{
-        width: 360,
         background: "var(--sw-bg-surface)",
         borderLeft: "1px solid var(--sw-border-default)",
       }}
@@ -200,7 +199,7 @@ export function CodexDetailPanel({
               {!isCandidate && (
                 <button
                   onClick={() => setEditOpen(true)}
-                  className="w-[26px] h-[26px] rounded-md flex items-center justify-center cursor-pointer transition-colors"
+                  className="size-11 md:size-[26px] rounded-md flex items-center justify-center cursor-pointer transition-colors"
                   style={{
                     background: "var(--sw-bg-active)",
                     border: "1px solid var(--sw-border-focus)",
@@ -229,7 +228,8 @@ export function CodexDetailPanel({
           </div>
           <button
             onClick={onClose}
-            className="w-[26px] h-[26px] rounded-md flex items-center justify-center cursor-pointer transition-colors"
+            aria-label="작품 기억 목록으로 돌아가기"
+            className="size-11 md:size-[26px] rounded-md flex items-center justify-center cursor-pointer transition-colors"
             style={{
               background: "transparent",
               border: "1px solid var(--sw-border-muted)",

@@ -2,7 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 import { chunkChapter } from "./chunking.service";
 import { embedTexts } from "./embedding.service";
-import { createLLMUsageLogger } from "./llm-usage-logger.service";
+import { createBudgetedEmbeddingOptions } from "./budgeted-embedding";
+import { createLLMBudgetGuard, LLMBudgetError, getLLMBudgetMessage } from "./llm-budget.service";
 import { MentionService } from "./mention.service";
 import { EntityExtractionService } from "./entity-extraction.service";
 import { AnalysisJobService } from "./analysis-job.service";
@@ -40,7 +41,8 @@ export class IndexingService {
   async indexChapter(
     chapterId: string,
     projectId: string,
-    content: string
+    content: string,
+    options?: { userId?: string | null }
   ): Promise<{ chunkCount: number; mentionCount: number }> {
     // 0. Snapshot existing chunk embeddings so unchanged chunk contents
     //    (e.g. a forced re-save for re-extraction) skip re-embedding.
@@ -53,7 +55,35 @@ export class IndexingService {
       if (prev.embedding) reusableEmbeddings.set(prev.content, prev.embedding);
     }
 
-    // 1. Delete existing chunks (mentions cascade-deleted via FK). A silent
+    // 1. Chunk the content
+    const rawChunks = chunkChapter(content);
+
+    // 2. Batch embed only chunk contents without a reusable embedding
+    const missingChunks = rawChunks.filter(
+      (c) => !reusableEmbeddings.has(c.content)
+    );
+    const computedEmbeddings = missingChunks.length > 0
+      ? await embedTexts(
+          missingChunks.map((c) => c.content),
+          createBudgetedEmbeddingOptions(this.supabase, {
+            projectId,
+            userId: await this.resolveUserId(projectId, options?.userId),
+            feature: "embedding",
+            promptTemplateKey: "indexing.chunk_embedding",
+            promptTemplateVersion: "v1",
+          })
+        )
+      : [];
+    if (computedEmbeddings.length !== missingChunks.length) {
+      throw new Error("chunk embedding result count mismatch");
+    }
+    const computedByContent = new Map<string, string>();
+    missingChunks.forEach((chunk, i) => {
+      computedByContent.set(chunk.content, JSON.stringify(computedEmbeddings[i]));
+    });
+
+    // Prepare all paid embeddings before removing the previous usable index.
+    // 3. Delete existing chunks (mentions cascade-deleted via FK). A silent
     //    failure here would stack new chunks on top of stale ones, doubling
     //    RAG results for this chapter — abort instead.
     const { error: deleteError } = await this.supabase
@@ -64,29 +94,7 @@ export class IndexingService {
       throw new Error(`chunk cleanup failed: ${deleteError.message}`);
     }
 
-    // 2. Chunk the content
-    const rawChunks = chunkChapter(content);
     if (rawChunks.length === 0) return { chunkCount: 0, mentionCount: 0 };
-
-    // 3. Batch embed only chunk contents without a reusable embedding
-    const missingChunks = rawChunks.filter(
-      (c) => !reusableEmbeddings.has(c.content)
-    );
-    const computedEmbeddings = await embedTexts(
-      missingChunks.map((c) => c.content),
-      {
-        onComplete: createLLMUsageLogger(this.supabase, {
-          projectId,
-          feature: "embedding",
-          promptTemplateKey: "indexing.chunk_embedding",
-          promptTemplateVersion: "v1",
-        }),
-      }
-    );
-    const computedByContent = new Map<string, string>();
-    missingChunks.forEach((chunk, i) => {
-      computedByContent.set(chunk.content, JSON.stringify(computedEmbeddings[i]));
-    });
 
     // 4. Insert chunks
     const chunkInserts = rawChunks.map((chunk) => ({
@@ -163,7 +171,8 @@ export class IndexingService {
   async indexChapterWithExtraction(
     chapterId: string,
     projectId: string,
-    content: string
+    content: string,
+    options?: { userId?: string | null }
   ): Promise<IndexExtractionResult> {
     // 0. Open an analysis job (DB-level duplicate-run guard). If a run is
     //    already active for this chapter, skip — the other run owns it, and
@@ -187,7 +196,8 @@ export class IndexingService {
       jobId,
       chapterId,
       projectId,
-      content
+      content,
+      options?.userId
     );
 
     // Stale-save follow-up: a save landing while this job was RUNNING is
@@ -214,7 +224,8 @@ export class IndexingService {
         followup.jobId,
         chapterId,
         projectId,
-        current
+        current,
+        options?.userId
       );
 
       if (attempt === MAX_STALE_FOLLOWUPS) {
@@ -228,6 +239,17 @@ export class IndexingService {
     }
 
     return result;
+  }
+
+  private async resolveUserId(projectId: string, userId?: string | null): Promise<string> {
+    if (userId) return userId;
+    const { data, error } = await this.supabase
+      .from("projects")
+      .select("user_id")
+      .eq("id", projectId)
+      .maybeSingle();
+    if (error || !data?.user_id) throw new LLMBudgetError("unavailable");
+    return data.user_id;
   }
 
   /** Current stored content of a chapter, or null if unreadable/missing. */
@@ -257,14 +279,18 @@ export class IndexingService {
     jobId: string | null,
     chapterId: string,
     projectId: string,
-    content: string
+    content: string,
+    ownerUserId?: string | null
   ): Promise<IndexExtractionResult> {
     try {
+      const userId = await this.resolveUserId(projectId, ownerUserId);
+      await createLLMBudgetGuard(this.supabase, { projectId, userId })();
       // 1. Run standard indexing first
       const { chunkCount, mentionCount } = await this.indexChapter(
         chapterId,
         projectId,
-        content
+        content,
+        { userId }
       );
 
       // 2. Run entity + relation extraction (non-critical — catch errors).
@@ -284,6 +310,7 @@ export class IndexingService {
         relationSuggestionCount = result.relationSuggestionCount;
         factSuggestionCount = result.factSuggestionCount;
       } catch (e) {
+        if (e instanceof LLMBudgetError) throw e;
         extractionError = e instanceof Error ? e.message : String(e);
         console.error(
           "[IndexingService] Entity extraction failed (non-critical):",
@@ -317,7 +344,9 @@ export class IndexingService {
     } catch (e) {
       // indexChapter (chunk/embed/insert) threw — record FAILED and
       // re-throw so the existing after() error behaviour is preserved.
-      const message = e instanceof Error ? e.message : String(e);
+      const message = e instanceof LLMBudgetError
+        ? getLLMBudgetMessage(e)
+        : e instanceof Error ? e.message : String(e);
       await this.jobService.markFailed(jobId, `indexing: ${message}`);
       throw e;
     }

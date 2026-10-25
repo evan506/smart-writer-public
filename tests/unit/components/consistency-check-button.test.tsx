@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const checkConsistencyMock = vi.hoisted(() => vi.fn());
@@ -32,7 +32,7 @@ describe("ConsistencyCheckButton", () => {
     const user = userEvent.setup();
     render(<ConsistencyCheckButton chapterId={CHAPTER_ID} />);
 
-    await user.click(screen.getByRole("button", { name: "일관성 검사" }));
+    await user.click(screen.getByRole("button", { name: "기억 등록 상태 점검" }));
 
     await waitFor(() =>
       expect(checkConsistencyMock).toHaveBeenCalledWith(CHAPTER_ID)
@@ -44,43 +44,30 @@ describe("ConsistencyCheckButton", () => {
     const user = userEvent.setup();
     render(<ConsistencyCheckButton chapterId={CHAPTER_ID} />);
 
-    await user.click(screen.getByRole("button", { name: "일관성 검사" }));
+    await user.click(screen.getByRole("button", { name: "기억 등록 상태 점검" }));
 
     expect(
-      await screen.findByText("발견된 설정 충돌이 없습니다")
+      await screen.findByText("등록 상태에서 확인할 항목이 없습니다")
     ).toBeTruthy();
   });
 
-  it("renders each conflict entry with entity name, type, and detail", async () => {
-    checkConsistencyMock.mockResolvedValue({
-      error: null,
-      conflicts: [
-        {
-          entity_id: "e1",
-          entity_name: "이서준",
-          conflict_type: "설정 불일치",
-          detail: "3장에서는 검사였다가 5장에서는 마법사로 서술됩니다",
-        },
-        {
-          entity_id: "e2",
-          entity_name: "붉은 검",
-          conflict_type: "속성 충돌",
-          detail: "무게가 챕터마다 다르게 서술됩니다",
-        },
-      ],
-    });
-    const user = userEvent.setup();
+  it("explains actual index checks in Korean without claiming semantic conflicts", async () => {
+    checkConsistencyMock.mockResolvedValue({ error: null, conflicts: [
+      { entity_id: "e1", entity_name: "이서준", conflict_type: "MISSING_SUMMARY", detail: "English summary detail" },
+      { entity_id: "e2", entity_name: "붉은 검", conflict_type: "UNTRACKED_MENTION", detail: "English mention detail" },
+      { entity_id: "e3", entity_name: "영주", conflict_type: "EXPECTED_ENTITY_ABSENT", detail: "English absence detail" },
+      { entity_id: null, entity_name: "숨겨진 편지", conflict_type: "DANGLING_FORESHADOW", detail: "English foreshadow detail" },
+    ] });
     render(<ConsistencyCheckButton chapterId={CHAPTER_ID} />);
-
-    await user.click(screen.getByRole("button", { name: "일관성 검사" }));
-
-    expect(await screen.findByText("이서준")).toBeTruthy();
-    expect(screen.getByText("설정 불일치")).toBeTruthy();
-    expect(
-      screen.getByText("3장에서는 검사였다가 5장에서는 마법사로 서술됩니다")
-    ).toBeTruthy();
-    expect(screen.getByText("붉은 검")).toBeTruthy();
-    expect(screen.getByText("속성 충돌")).toBeTruthy();
+    await userEvent.setup().click(screen.getByRole("button", { name: "기억 등록 상태 점검" }));
+    expect(await screen.findByText("설명 미등록")).toBeTruthy();
+    expect(screen.getByText("언급 기록 누락")).toBeTruthy();
+    expect(screen.getByText("이전 등장 항목")).toBeTruthy();
+    expect(screen.getByText("복선 회수 확인")).toBeTruthy();
+    expect(screen.getByText(/3회 이상 언급된 항목/)).toBeTruthy();
+    expect(screen.getByText(/의미적 모순을 검사하지 않습니다/)).toBeTruthy();
+    expect(screen.queryByText(/English/)).toBeNull();
+    expect(screen.getByText("이서준")).toBeTruthy();
   });
 
   it("calls toast.error and does not open the result panel when the action returns an error", async () => {
@@ -91,14 +78,14 @@ describe("ConsistencyCheckButton", () => {
     const user = userEvent.setup();
     render(<ConsistencyCheckButton chapterId={CHAPTER_ID} />);
 
-    await user.click(screen.getByRole("button", { name: "일관성 검사" }));
+    await user.click(screen.getByRole("button", { name: "기억 등록 상태 점검" }));
 
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
         "권한이 없거나 존재하지 않는 챕터입니다"
       )
     );
-    expect(screen.queryByText("발견된 설정 충돌이 없습니다")).toBeNull();
+    expect(screen.queryByText("등록 상태에서 확인할 항목이 없습니다")).toBeNull();
   });
 
   it("dismisses the result panel when the close button is clicked", async () => {
@@ -106,20 +93,69 @@ describe("ConsistencyCheckButton", () => {
     const user = userEvent.setup();
     render(<ConsistencyCheckButton chapterId={CHAPTER_ID} />);
 
-    await user.click(screen.getByRole("button", { name: "일관성 검사" }));
-    await screen.findByText("발견된 설정 충돌이 없습니다");
+    await user.click(screen.getByRole("button", { name: "기억 등록 상태 점검" }));
+    await screen.findByText("등록 상태에서 확인할 항목이 없습니다");
 
     await user.click(screen.getByRole("button", { name: "닫기" }));
 
-    expect(screen.queryByText("발견된 설정 충돌이 없습니다")).toBeNull();
+    expect(screen.queryByText("등록 상태에서 확인할 항목이 없습니다")).toBeNull();
   });
 
   it("disables the button and shows a running label while chapterId is null", () => {
     render(<ConsistencyCheckButton chapterId={null} />);
 
     const button = screen.getByRole("button", {
-      name: "일관성 검사",
+      name: "기억 등록 상태 점검",
     }) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
   });
+  it("clears visible results immediately when the chapter changes", async () => {
+    checkConsistencyMock.mockResolvedValue({ error: null, conflicts: [] });
+    const { rerender } = render(<ConsistencyCheckButton chapterId={CHAPTER_ID} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "기억 등록 상태 점검" }));
+    await screen.findByText("등록 상태에서 확인할 항목이 없습니다");
+    rerender(<ConsistencyCheckButton chapterId="chapter-b" />);
+    expect(screen.queryByText("기억 등록 상태 점검 결과")).toBeNull();
+    expect((screen.getByRole("button", { name: "기억 등록 상태 점검" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it.each(["success", "error", "rejection"])("ignores a late %s from another chapter", async (outcome) => {
+    let resolve!: (value: unknown) => void;
+    let reject!: (reason: Error) => void;
+    checkConsistencyMock.mockReturnValueOnce(new Promise((res, rej) => { resolve = res; reject = rej; }));
+    const { rerender } = render(<ConsistencyCheckButton chapterId={CHAPTER_ID} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "기억 등록 상태 점검" }));
+    expect((screen.getByRole("button", { name: "점검 중..." }) as HTMLButtonElement).disabled).toBe(true);
+    rerender(<ConsistencyCheckButton chapterId="chapter-b" />);
+    checkConsistencyMock.mockResolvedValueOnce({ error: null, conflicts: [{ entity_id: "b", entity_name: "B 회차 항목", conflict_type: "MISSING_SUMMARY", detail: "" }] });
+    await userEvent.setup().click(screen.getByRole("button", { name: "기억 등록 상태 점검" }));
+    await screen.findByText("B 회차 항목");
+    await act(async () => {
+      if (outcome === "rejection") reject(new Error("late failure"));
+      else resolve({ error: outcome === "error" ? "late error" : null, conflicts: [] });
+    });
+    expect(screen.getByText("B 회차 항목")).toBeTruthy();
+    expect(screen.queryByText("등록 상태에서 확인할 항목이 없습니다")).toBeNull();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("reports a rejected request and allows retry", async () => {
+    checkConsistencyMock.mockRejectedValueOnce(new Error("network"));
+    render(<ConsistencyCheckButton chapterId={CHAPTER_ID} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "기억 등록 상태 점검" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("기억 등록 상태 점검에 실패했습니다. 잠시 후 다시 시도해 주세요."));
+    expect((screen.getByRole("button", { name: "기억 등록 상태 점검" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByText("기억 등록 상태 점검 결과")).toBeNull();
+  });
+
+  it("ignores errors after unmount", async () => {
+    let reject!: (reason: Error) => void;
+    checkConsistencyMock.mockReturnValueOnce(new Promise((_, rej) => { reject = rej; }));
+    const { unmount } = render(<ConsistencyCheckButton chapterId={CHAPTER_ID} />);
+    await userEvent.setup().click(screen.getByRole("button", { name: "기억 등록 상태 점검" }));
+    unmount();
+    await act(async () => { reject(new Error("late failure")); });
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
 });

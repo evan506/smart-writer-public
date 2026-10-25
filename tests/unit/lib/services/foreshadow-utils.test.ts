@@ -22,7 +22,7 @@ describe("foreshadow utils", () => {
     const result = parseForeshadowFormData(
       formData({
         projectId: "project-1",
-        description: "  아이들이 리켈을 두려운 호칭으로 부르는 이유  ",
+        description: "  아이들이 세란을 두려운 호칭으로 부르는 이유  ",
         planted_chapter: "1",
         expected_reveal: "",
         entity_ids: ["entity-1", "entity-1", "entity-2", ""],
@@ -34,7 +34,7 @@ describe("foreshadow utils", () => {
       payload: {
         projectId: "project-1",
         foreshadowId: undefined,
-        description: "아이들이 리켈을 두려운 호칭으로 부르는 이유",
+        description: "아이들이 세란을 두려운 호칭으로 부르는 이유",
         plantedChapter: 1,
         expectedReveal: null,
         status: "PLANTED",

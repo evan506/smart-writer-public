@@ -124,7 +124,8 @@ function ExpandedChapterRow({
     <div className="group/row relative mb-0.5">
       <button
         onClick={() => onSelect(chapter)}
-        className="flex w-full items-center justify-between gap-1.5 rounded-md px-2 py-[6px] text-left transition-all"
+        aria-current={isActive ? "page" : undefined}
+        className="flex min-h-11 w-full items-center justify-between gap-1.5 rounded-md py-[6px] pl-2 pr-12 md:min-h-0 md:px-2 text-left transition-all"
         style={{
           background: isActive ? "var(--sw-bg-active)" : "transparent",
           border: isActive
@@ -145,7 +146,7 @@ function ExpandedChapterRow({
           event.stopPropagation();
           onDelete(chapter);
         }}
-        className="absolute right-1 top-1/2 flex size-5 -translate-y-1/2 items-center justify-center rounded opacity-0 transition-opacity group-hover/row:opacity-100"
+        className="absolute right-1 top-1/2 flex size-11 md:size-5 -translate-y-1/2 items-center justify-center rounded opacity-100 md:opacity-0 transition-opacity group-hover/row:opacity-100 focus-visible:opacity-100"
         style={{ color: "var(--sw-text-dim)" }}
         aria-label="챕터 삭제"
       >
@@ -169,6 +170,7 @@ function CollapsedChapterButton({
   return (
     <button
       onClick={() => onSelect(chapter)}
+        aria-current={isActive ? "page" : undefined}
       className="relative flex size-8 items-center justify-center rounded-md transition-all"
       style={{
         fontSize: "10px",
@@ -233,9 +235,10 @@ function CreateChapterButton({
       onClick={onCreate}
       disabled={isCreating}
       aria-label="새 챕터 만들기"
-      className={`${collapsed ? "my-1 size-7" : "size-[18px]"} flex items-center justify-center rounded text-sm transition-all`}
+      aria-busy={isCreating}
+      className={`${collapsed ? "my-1 size-7" : "size-[18px]"} max-md:min-h-11 max-md:min-w-11 flex items-center justify-center rounded text-sm transition-all`}
       style={{ color: "var(--sw-accent)" }}
-      title="새 챕터 만들기"
+      title={isCreating ? "챕터 생성 중" : "새 챕터 만들기"}
     >
       {isCreating ? (
         <Loader2 className="size-3 animate-spin" />

@@ -19,7 +19,8 @@ vi.mock("next/cache", () => ({
   revalidatePath: revalidatePathMock,
 }));
 
-vi.mock("@/lib/services", () => ({
+vi.mock("@/lib/services", async () => ({
+  getLLMBudgetMessage: (await import("@/lib/services/llm-budget.service")).getLLMBudgetMessage,
   checkLLMBudget: checkLLMBudgetMock,
   LLM_BUDGET_BLOCKED_MESSAGE:
     "이 프로젝트의 AI 사용 한도에 도달했습니다. 한도가 초기화된 후 다시 시도해 주세요.",

@@ -11,12 +11,24 @@
 
 The live demo at [`/demo`](https://smart-writer-vq8j.vercel.app/demo) walks the write → review → story-memory flow **with no sign-up**.
 
+## Snapshot scope and contribution
+
+Updated on **2026-10-25**, based on the **2026-10-24 local working tree**. This is a curated evaluation snapshot, not an automatically synchronized mirror or a complete development history.
+
+- **My role:** define requirements and priorities from the PRD, guide product direction, and specify manuscript-preservation and regression constraints. I personally checked Korean input in the local PC writing screen.
+- **AI use:** ChatGPT and Codex, currently on a US$100/month paid plan. Coding, technical diagnosis, and automated test execution were delegated to AI coding agents.
+- **Recent code:** manuscript-save/budget safeguards, retrieval and Q&A evidence handling, PC input/display improvements, and restoring the writing position after reference lookup.
+- **Limits:** recent local PC and responsive changes are not all deployed to the hosted demo. Real-device IME/mobile workflows and actual model-answer quality require separate validation.
+- **Public data:** retained synthetic fixtures; private manuscripts, manuscript-derived evaluation data, internal documents and private diagnostic scenarios are excluded.
+
+See the Korean README and GitHub Actions for current verification results.
+
 ## Highlights
 
 - **Rich write workspace** — a custom Tiptap editor with debounced autosave, offline detection, an unsaved-changes guard, and inline entity/warning highlights.
 - **Source-backed AI review** — entity, relation, and setting candidates arrive with their *source evidence*, and nothing enters canon without the author's explicit approval.
 - **Interactive relationship graph** — a custom d3-force renderer with zoom, pan, node dragging, and typed nodes/edges.
-- **Tested & CI-gated** — 596 unit tests (97 files), Playwright E2E, GitHub Actions CI, and a Docker-backed migration replay gate.
+- **Tested & CI-gated** — Unit regression tests, Playwright E2E, GitHub Actions CI, and a Docker-backed migration replay gate.
 
 ## Product flow
 
@@ -109,19 +121,19 @@ Browser
 ```bash
 pnpm lint
 pnpm exec tsc --noEmit
-pnpm test:run          # 596 unit tests across 97 files
+pnpm test:run          # public-snapshot unit tests
 pnpm build
 ```
 
-Broader, skip-safe suites:
+Additional suites with explicit environment requirements:
 
 ```bash
-pnpm test:integration  # skips unless SMART_WRITER_INTEGRATION_TESTS=1
+SMART_WRITER_INTEGRATION_TESTS=1 pnpm test:integration  # requires a local DB
 pnpm test:e2e          # authenticated flows skip unless SMART_WRITER_AUTH_E2E_TESTS=1
 pnpm db:replay-verify  # Docker-backed migration replay gate
 ```
 
-CI (GitHub Actions) runs lint → knip → typecheck → unit + integration + e2e → build, plus a second job that spins up a local Supabase and runs the DB-backed search/RAG regression.
+CI runs lint, knip, app/script typechecks, unit coverage, basic browser tests and build. A separate local-Supabase job runs DB-backed and authenticated regressions. See the actual Actions results; skipped checks are not passes.
 
 ## Intentionally out of scope
 
@@ -212,3 +224,11 @@ tests/                 unit, integration, e2e
 ## License
 
 **Source-available, not open source.** Published for portfolio and evaluation purposes. Reading, reviewing, and running it locally to evaluate the work is fine; reuse in a product, redistribution, or derivative works are not permitted without written permission. See [LICENSE](./LICENSE).
+
+## Public snapshot verification (2026-10-25)
+
+- Unit tests: **1,065 passed across 131 files**, configured coverage thresholds passed.
+- ESLint, app/script typechecks, knip and production build passed.
+- Basic browser run: **1 passed, 17 skipped** (DB/auth-gated cases).
+- DB/authenticated checks are reported separately by GitHub Actions.
+- Private-data diagnostic suites were excluded; counts differ from the working repository. These checks do not establish model-answer quality or demo deployment parity.

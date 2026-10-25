@@ -209,6 +209,7 @@ export function CodexFullPage({
 
   return (
     <div className="flex flex-col absolute inset-0 overflow-hidden" style={{ background: "var(--sw-bg-base)" }}>
+      <div className={selectedEntity ? "hidden lg:block" : "shrink-0"}>
       <CodexFullPageHeader
         projectTitle={projectTitle}
         totalChapters={totalChapters}
@@ -231,8 +232,10 @@ export function CodexFullPage({
         onGraphOpen={() => setGraphOpen(true)}
         onCreateOpen={() => setCreateOpen(true)}
       />
+      </div>
 
       <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className={`${selectedEntity ? "hidden lg:flex" : "flex"} min-w-0 flex-1 flex-col overflow-hidden`}>
         <CodexEntityList
           filteredEntities={filteredEntities}
           groupedEntities={groupedEntities}
@@ -244,6 +247,7 @@ export function CodexFullPage({
           onEntityClick={handleEntityClick}
         />
 
+        </div>
         {selectedEntity && (
           <CodexDetailPanel
             entity={selectedEntity}

@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+const budgetGuardMock = vi.hoisted(() => vi.fn(() => vi.fn(async () => {})));
+vi.mock("@/lib/services/llm-budget.service", () => ({ createLLMBudgetGuard: budgetGuardMock }));
 import { AIAnalysisService } from "@/lib/services/ai-analysis.service";
 import { ContextAssemblyService } from "@/lib/services/context-assembly.service";
 import { callLLM } from "@/lib/services/llm.service";
@@ -153,7 +155,8 @@ describe("AIAnalysisService.analyze", () => {
         userId: "user-9",
         feature: "analysis",
         promptTemplateKey: "analysis.chapter",
-      })
+      }),
+      { failOnError: true }
     );
   });
 
@@ -168,7 +171,8 @@ describe("AIAnalysisService.analyze", () => {
 
     expect(mockCreateLLMUsageLogger).toHaveBeenCalledWith(
       expect.anything(),
-      expect.objectContaining({ userId: null })
+      expect.objectContaining({ userId: null }),
+      { failOnError: true }
     );
   });
 
@@ -190,7 +194,8 @@ describe("AIAnalysisService.analyze", () => {
     expect(assembleMock).toHaveBeenCalledWith(
       "proj-1",
       "ch-1",
-      "주인공이 검을 뽑았다."
+      "주인공이 검을 뽑았다.",
+      {}
     );
 
     const call = mockCallLLM.mock.calls[0][0];
@@ -201,4 +206,14 @@ describe("AIAnalysisService.analyze", () => {
     expect(call.user).toContain("로맨스물");
     expect(call.user).toContain("주인공이 검을 뽑았다.");
   });
+});
+
+it("forwards owner to context and binds a guard before the answer", async () => {
+  const assemble = mockAssemble();
+  mockCallLLM.mockResolvedValue('{"conflicts":[],"suggestions":[],"references":[]}');
+  const client = {} as never;
+  await new AIAnalysisService(client).analyze("project-1", "chapter-1", "본문", { userId: "owner-1" });
+  expect(assemble).toHaveBeenCalledWith("project-1", "chapter-1", "본문", { userId: "owner-1" });
+  expect(budgetGuardMock).toHaveBeenCalledWith(client, { projectId: "project-1", userId: "owner-1" });
+  expect(mockCallLLM.mock.calls.at(-1)?.[0].beforeRequest).toEqual(expect.any(Function));
 });

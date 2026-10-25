@@ -6,8 +6,8 @@ import {
   CanonQAService,
   RAGSearchService,
   checkLLMBudget,
-  LLM_BUDGET_BLOCKED_MESSAGE,
 } from "@/lib/services";
+import { getLLMBudgetMessage } from "@/lib/services/llm-budget.service";
 import type { CanonQAResult } from "@/lib/services/canon-qna.service";
 import type { RAGSearchResult } from "@/lib/services/rag-search.service";
 
@@ -24,7 +24,7 @@ export async function ragSearch(
     const owner = await requireProjectOwner(supabase, projectId);
     if (!owner.ok) return { error: owner.error, result: null };
     const service = new RAGSearchService(supabase);
-    const result = await service.search(projectId, query);
+    const result = await service.search(projectId, query, { userId: owner.userId });
     return { error: null, result };
   } catch (e) {
     return {
@@ -52,18 +52,14 @@ export async function askCanonQuestion(
       userId: owner.userId,
     });
     if (!budget.allowed) {
-      return { error: LLM_BUDGET_BLOCKED_MESSAGE, result: null };
+      return { error: getLLMBudgetMessage(budget), result: null };
     }
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
 
     const service = new CanonQAService(supabase);
     const result = await service.ask({
       projectId,
       question,
-      userId: user?.id ?? null,
+      userId: owner.userId,
     });
     return { error: null, result };
   } catch (e) {

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useSidebar } from "@/components/ui/sidebar";
+import { useState } from "react";
 import { toast } from "sonner";
 import {
-  createChapter,
   deleteChapter,
 } from "@/app/(dashboard)/projects/[id]/chapters-actions";
 import { useWriteSidebar } from "@/components/write/write-sidebar-context";
@@ -12,59 +12,42 @@ import { ChapterDeleteDialog } from "./chapter-delete-dialog";
 import { CollapsedChapterList, ExpandedChapterList } from "./chapter-list-parts";
 
 export function WriteChapterSidebar({ expanded }: { expanded: boolean }) {
+  const { setOpenMobile } = useSidebar();
   const { data, callbacksRef } = useWriteSidebar();
-  const [isCreating, startCreating] = useTransition();
   const [deleteTarget, setDeleteTarget] = useState<Chapter | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
   if (!data) return null;
 
-  const { projectId, projectName, projectGenre, chapters, activeChapterId } = data;
+  const { projectId, projectName, projectGenre, chapters, activeChapterId, isCreating } = data;
   const sorted = [...chapters].sort((a, b) => a.chapter_num - b.chapter_num);
 
   function handleCreate() {
-    startCreating(async () => {
-      const nextNum =
-        chapters.length > 0
-          ? Math.max(...chapters.map((chapter) => chapter.chapter_num)) + 1
-          : 1;
-      const formData = new FormData();
-      formData.set("projectId", projectId);
-      formData.set("chapterNum", String(nextNum));
-      formData.set("title", "");
-      const result = await createChapter(formData);
-      if (result.error) {
-        toast.error(result.error);
-      } else if (result.id) {
-        const newChapter: Chapter = {
-          id: result.id,
-          project_id: projectId,
-          chapter_num: nextNum,
-          title: null,
-          content: null,
-          word_count: 0,
-          summary: null,
-          arc_summary: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        };
-        await callbacksRef.current?.onChapterCreated(newChapter);
-      }
-    });
+    void callbacksRef.current?.onCreateChapter();
   }
 
   async function handleDeleteConfirm() {
-    if (!deleteTarget) return;
+    if (!deleteTarget || isDeleting) return;
     setIsDeleting(true);
-    const result = await deleteChapter(deleteTarget.id, projectId);
-    setIsDeleting(false);
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      toast.success("챕터가 삭제되었습니다");
-      callbacksRef.current?.onChapterDeleted(deleteTarget.id);
+    const callbacks = callbacksRef.current;
+    try {
+      if (!callbacks || !await callbacks.onBeforeChapterDelete()) return;
+      try {
+        const result = await deleteChapter(deleteTarget.id, projectId);
+        if (result.error) toast.error(result.error);
+        else {
+          callbacks.onChapterDeleted(deleteTarget.id);
+          toast.success("챕터가 삭제되었습니다");
+        }
+      } finally {
+        callbacks.onChapterDeleteFinished();
+      }
+    } catch {
+      toast.error("챕터를 삭제하지 못했습니다. 다시 시도해 주세요.");
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
     }
-    setDeleteTarget(null);
   }
 
   return expanded ? (
@@ -76,7 +59,7 @@ export function WriteChapterSidebar({ expanded }: { expanded: boolean }) {
         activeChapterId={activeChapterId}
         isCreating={isCreating}
         onCreate={handleCreate}
-        onSelectChapter={(chapter) => callbacksRef.current?.onSelectChapter(chapter)}
+        onSelectChapter={(chapter) => { void callbacksRef.current?.onSelectChapter(chapter); setOpenMobile(false); }}
         onDeleteChapter={setDeleteTarget}
       />
       <ChapterDeleteDialog
@@ -94,7 +77,7 @@ export function WriteChapterSidebar({ expanded }: { expanded: boolean }) {
       activeChapterId={activeChapterId}
       isCreating={isCreating}
       onCreate={handleCreate}
-      onSelectChapter={(chapter) => callbacksRef.current?.onSelectChapter(chapter)}
+      onSelectChapter={(chapter) => { void callbacksRef.current?.onSelectChapter(chapter); setOpenMobile(false); }}
     />
   );
 }

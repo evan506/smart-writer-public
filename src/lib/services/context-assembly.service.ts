@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database.types";
 import type { GenreRule } from "@/types";
 import type { AssembledContext } from "./prompt-templates";
+import { LLMBudgetError } from "./llm-budget.service";
 import { RAGSearchService } from "./rag-search.service";
 import { ConsistencyService } from "./consistency.service";
 
@@ -11,12 +12,13 @@ export class ContextAssemblyService {
   async assemble(
     projectId: string,
     chapterId: string,
-    content: string
+    content: string,
+    options: { userId?: string | null } = {}
   ): Promise<AssembledContext> {
     const [genreRules, ragContext, recentChapters, conflicts] =
       await Promise.all([
         this.loadGenreRules(projectId),
-        this.loadRAGContext(projectId, content),
+        this.loadRAGContext(projectId, content, options.userId),
         this.loadRecentChapters(projectId, chapterId),
         this.loadConflicts(chapterId),
       ]);
@@ -58,11 +60,12 @@ export class ContextAssemblyService {
 
   private async loadRAGContext(
     projectId: string,
-    content: string
+    content: string,
+    userId?: string | null
   ): Promise<string> {
     try {
       const rag = new RAGSearchService(this.supabase);
-      const result = await rag.search(projectId, content.slice(0, 200));
+      const result = await rag.search(projectId, content.slice(0, 200), { userId, propagateBudgetErrors: true });
       if (result.items.length === 0) return "";
 
       return result.items
@@ -71,7 +74,8 @@ export class ContextAssemblyService {
             `${i + 1}. [${item.source}/${item.type}] ${item.title}: ${item.content.slice(0, 300)}`
         )
         .join("\n");
-    } catch {
+    } catch (error) {
+      if (error instanceof LLMBudgetError) throw error;
       return "";
     }
   }

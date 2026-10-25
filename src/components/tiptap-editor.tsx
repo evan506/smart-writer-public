@@ -33,11 +33,14 @@ export interface TiptapEditorRef {
 
 interface TiptapEditorProps {
   initialContent: string;
+  editable?: boolean;
   onUpdate: (text: string) => void;
   warnings: InlineWarning[];
   entities?: EntityHighlightItem[];
   selectedEntityId?: string | null;
   onEntityClick?: (entityId: string) => void;
+  onBeforeReference?: () => void;
+  onReady?: () => void;
 }
 
 interface EntityTooltipState {
@@ -51,11 +54,14 @@ export const TiptapEditor = forwardRef<TiptapEditorRef, TiptapEditorProps>(
   function TiptapEditor(
     {
       initialContent,
+      editable = true,
       onUpdate,
       warnings,
       entities = [],
       selectedEntityId = null,
       onEntityClick,
+      onBeforeReference,
+      onReady,
     },
     ref
   ) {
@@ -66,8 +72,12 @@ export const TiptapEditor = forwardRef<TiptapEditorRef, TiptapEditorProps>(
       [entities]
     );
 
+    // The workspace keys this component by chapter ID; initialize once per mount.
+    const [initialDoc] = useState(() => textToDoc(initialContent));
+
     const editor = useEditor({
       immediatelyRender: false,
+      editable,
       extensions: [
         StarterKit.configure({
           bold: false,
@@ -88,13 +98,16 @@ export const TiptapEditor = forwardRef<TiptapEditorRef, TiptapEditorProps>(
         WarningHighlightExtension,
         EntityHighlightExtension,
       ],
-      content: textToDoc(initialContent),
+      content: initialDoc,
       onUpdate: ({ editor: e }) => {
         onUpdate(e.getText());
       },
       editorProps: {
         attributes: {
           class: "min-h-[60vh] outline-none p-0",
+          role: "textbox",
+          "aria-label": "본문 편집기",
+          "aria-multiline": "true",
           spellcheck: "false",
           autocorrect: "off",
           autocapitalize: "off",
@@ -102,10 +115,18 @@ export const TiptapEditor = forwardRef<TiptapEditorRef, TiptapEditorProps>(
       },
     });
 
+    useEffect(() => {
+      editor?.setEditable(editable, false);
+    }, [editor, editable]);
+
     useImperativeHandle(ref, () => ({
       getEditor: () => editor,
       getContainer: () => containerRef.current,
     }));
+
+    useEffect(() => {
+      if (editor) onReady?.();
+    }, [editor, onReady]);
 
     // warnings가 바뀌면 에디터에 적용
     useEffect(() => {
@@ -170,6 +191,9 @@ export const TiptapEditor = forwardRef<TiptapEditorRef, TiptapEditorProps>(
     return (
       <div
         ref={containerRef}
+        onPointerDownCapture={(event) => {
+          if ((event.target as HTMLElement).closest("[data-entity-id]")) onBeforeReference?.();
+        }}
         onMouseOver={handleEntityMouseOver}
         onPointerOver={handleEntityMouseOver}
         onMouseLeave={() => setEntityTooltip(null)}

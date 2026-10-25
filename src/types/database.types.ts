@@ -1317,6 +1317,27 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_llm_usage_totals: {
+        Args: {
+          p_project_id: string
+          p_user_id: string | null
+          p_project_active: boolean
+          p_project_monthly: boolean
+          p_user_active: boolean
+          p_user_monthly: boolean
+          p_as_of: string
+        }
+        Returns: {
+          authorized: boolean
+          project_day_usd: number
+          project_month_usd: number
+          user_day_usd: number
+          user_month_usd: number
+          project_unknown_cost_count: number
+          user_unknown_cost_count: number
+        }[]
+      }
+
       check_relationship: {
         Args: { entity_a: string; entity_b: string }
         Returns: {
@@ -1332,6 +1353,17 @@ export type Database = {
           detail: string
           entity_id: string
           entity_name: string
+        }[]
+      }
+      delete_codex_entity: {
+        Args: {
+          p_block_term?: boolean
+          p_entity_id: string
+          p_project_id: string
+        }
+        Returns: {
+          entity_name: string
+          excluded_term_added: boolean
         }[]
       }
       find_related_entities: {
@@ -1423,8 +1455,21 @@ export type Database = {
           value: string
         }[]
       }
+      merge_codex_entity_as_alias: {
+        Args: {
+          p_project_id: string
+          p_source_entity_id: string
+          p_target_entity_id: string
+        }
+        Returns: {
+          source_name: string
+          target_aliases: Json
+          target_name: string
+          target_summary: string | null
+        }[]
+      }
       search_chapters_bm25: {
-        Args: { p_limit?: number; p_project_id: string; p_query: string }
+        Args: { p_limit?: number; p_project_id: string; p_query: string; p_word_threshold?: number }
         Returns: {
           chapter_num: number
           content: string

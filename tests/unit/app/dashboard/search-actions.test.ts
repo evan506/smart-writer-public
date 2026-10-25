@@ -24,6 +24,10 @@ vi.mock("@/lib/services", () => ({
     "이 프로젝트의 AI 사용 한도에 도달했습니다. 한도가 초기화된 후 다시 시도해 주세요.",
 }));
 
+vi.mock("@/lib/services/llm-budget.service", () => ({
+  getLLMBudgetMessage: () => "이 프로젝트의 AI 사용 한도에 도달했습니다. 한도가 초기화된 후 다시 시도해 주세요.",
+}));
+
 const projectId = "project-1";
 
 function makeClient() {
@@ -87,7 +91,7 @@ describe("search server actions", () => {
       const result = await ragSearch(projectId, "리엔");
 
       expect(result).toEqual({ error: null, result: fakeResult });
-      expect(ragSearchInstanceSearchMock).toHaveBeenCalledWith(projectId, "리엔");
+      expect(ragSearchInstanceSearchMock).toHaveBeenCalledWith(projectId, "리엔", { userId: "user-1" });
     });
   });
 
@@ -108,7 +112,7 @@ describe("search server actions", () => {
       });
 
       const { askCanonQuestion } = await importActions();
-      const result = await askCanonQuestion(projectId, "리엔은 누구야?");
+      const result = await askCanonQuestion(projectId, "리엔는 누구야?");
 
       expect(result).toEqual({
         error: "권한이 없거나 존재하지 않는 프로젝트입니다",
@@ -122,7 +126,7 @@ describe("search server actions", () => {
       checkLLMBudgetMock.mockResolvedValue({ allowed: false, reason: "monthly" });
 
       const { askCanonQuestion } = await importActions();
-      const result = await askCanonQuestion(projectId, "리엔은 누구야?");
+      const result = await askCanonQuestion(projectId, "리엔는 누구야?");
 
       expect(result).toEqual({
         error:
@@ -135,16 +139,16 @@ describe("search server actions", () => {
 
     it("calls CanonQAService.ask with projectId/question/userId when under budget", async () => {
       checkLLMBudgetMock.mockResolvedValue({ allowed: true, reason: null });
-      const fakeResult = { answer: "리엔은 주인공이다.", citations: [] };
+      const fakeResult = { answer: "리엔는 주인공이다.", citations: [] };
       canonQAInstanceAskMock.mockResolvedValue(fakeResult);
 
       const { askCanonQuestion } = await importActions();
-      const result = await askCanonQuestion(projectId, "리엔은 누구야?");
+      const result = await askCanonQuestion(projectId, "리엔는 누구야?");
 
       expect(result).toEqual({ error: null, result: fakeResult });
       expect(canonQAInstanceAskMock).toHaveBeenCalledWith({
         projectId,
-        question: "리엔은 누구야?",
+        question: "리엔는 누구야?",
         userId: "user-1",
       });
     });

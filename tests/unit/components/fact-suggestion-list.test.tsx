@@ -16,7 +16,7 @@ function suggestion(overrides: Partial<FactSuggestionView> = {}): FactSuggestion
     factType: "ATTRIBUTE",
     factKey: "species",
     value: "하이엘프다",
-    evidenceText: "리엔은 하이엘프라고 소개됐다.",
+    evidenceText: "리엔는 하이엘프라고 소개됐다.",
     confidence: 0.87,
     canApprove: true,
     existingFactId: null,
@@ -49,10 +49,11 @@ describe("FactSuggestionList", () => {
     expect(html).toContain("검토할 세부 설정 (1)");
     expect(html).toContain("리엔");
     expect(html).toContain("작품 기억");
+    expect(html).toContain("항목 요약을 수정해도 이 세부 설정 후보는 바뀌지 않으므로 각 원문 근거를 확인");
     expect(html).toContain("새 설정 후보");
     expect(html).toContain("species:");
     expect(html).toContain("하이엘프다");
-    expect(html).toContain("리엔은 하이엘프라고 소개됐다.");
+    expect(html).toContain("리엔는 하이엘프라고 소개됐다.");
     expect(html).toContain("title=\"설정으로 저장\"");
     expect(html).not.toContain("이미 승인된 설정입니다.");
   });
@@ -72,6 +73,8 @@ describe("FactSuggestionList", () => {
     expect(html).toContain("항목 후보");
     expect(html).toContain("항목 승인 대기");
     expect(html).toContain("항목 연결이 먼저 필요합니다");
+    expect(html).toContain("항목 후보를 넘겼다면 이 세부 설정 후보도 따로 넘겨 주세요");
+    expect(html).toContain("연결된 설정이 자동으로 없어지지는 않습니다");
     expect(html).toContain("관련 항목 후보 보기");
     expect(html).toContain("항목 승인 후 저장 가능");
     expect(html).toContain("title=\"먼저 항목 후보를 작품 기억으로 승인해야 합니다\"");

@@ -15,7 +15,7 @@ export default defineConfig({
     setupFiles: ["./tests/setup.ts"],
     include: ["tests/integration/**/*.{test,spec}.{ts,tsx}"],
     exclude: ["tests/unit/**", "tests/e2e/**", "node_modules/**", ".next/**"],
-    passWithNoTests: true,
+    passWithNoTests: false,
     testTimeout: 30_000,
   },
 });

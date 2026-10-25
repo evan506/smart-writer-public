@@ -20,7 +20,7 @@ import {
 } from "@/lib/services/extraction-memory/distillation.service";
 import {
   checkLLMBudget,
-  LLM_BUDGET_BLOCKED_MESSAGE,
+  getLLMBudgetMessage,
 } from "@/lib/services";
 
 const EMPTY_PANEL = {
@@ -154,7 +154,7 @@ export async function generateExtractionProposals(projectId: string) {
     userId: owner.userId,
   });
   if (!budget.allowed) {
-    return { error: LLM_BUDGET_BLOCKED_MESSAGE, proposed: 0 };
+    return { error: getLLMBudgetMessage(budget), proposed: 0 };
   }
 
   const outcome = await runExtractionDistillation(
