@@ -11,7 +11,6 @@ eval "$status_env"
 : "${ANON_KEY:?supabase status did not provide ANON_KEY}"
 : "${SERVICE_ROLE_KEY:?supabase status did not provide SERVICE_ROLE_KEY}"
 
-export NODE_TLS_REJECT_UNAUTHORIZED=0
 export SMART_WRITER_INTEGRATION_TESTS=1
 export SUPABASE_TEST_URL="$API_URL"
 export SUPABASE_TEST_ANON_KEY="$ANON_KEY"

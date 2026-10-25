@@ -88,7 +88,7 @@ d3-force 인터랙티브 그래프. 타입별 노드/엣지, 줌·팬·드래그
 | UI | Tailwind v4, shadcn/ui + Radix, CVA, 커스텀 디자인 토큰 |
 | 시각화 | d3-force (커스텀 인터랙티브 그래프 렌더러) |
 | 검증 | Zod |
-| LLM | OpenRouter 경유 Claude 계열 모델 + OpenAI 호환 임베딩(`text-embedding-3-small`). 기본 모델은 `.env.example`에서 설정 |
+| LLM | OpenRouter 경유 Claude 계열 모델 + OpenAI 호환 임베딩(`text-embedding-3-small`). 기본 모델은 `src/lib/services/llm-models.ts`, 선택적 변경 변수는 `.env.example`에서 확인 |
 | 테스트 | Vitest, Testing Library, Playwright |
 | 툴링 | pnpm 10.25.0, ESLint, knip (dead-code 게이트) |
 
@@ -115,6 +115,8 @@ Browser
 - **Supabase는 서버 전용.** 브라우저용 Supabase 클라이언트가 없습니다.
 
 ## 검증
+
+아래 로컬 설치 절차로 의존성과 `.env.local`을 먼저 준비한 뒤 실행합니다.
 
 ```bash
 pnpm lint
@@ -152,48 +154,81 @@ CI(GitHub Actions)는 lint → knip → typecheck → unit coverage → 기본 E
 - `/demo`에서 원클릭 로그인 — 별도 회원가입이나 개인 API 키 불필요
 - 시드된 「흑철기사단 연대기」 3화로 집필 → 후보 검토 → 작품 기억 흐름을 그대로 확인
 
-## 로컬 개발
+## 로컬 설치와 실행
 
-준비물: Node.js + Corepack, Supabase(기존 프로젝트 또는 로컬용 Supabase CLI + Docker), `OPENROUTER_API_KEY`.
+검증 환경: Node.js **22.12 이상**(검증 시 22.22), pnpm **10.25.0**, Supabase CLI **2.65.5**, 실행 중인 Docker. Node.js 버전은 `.node-version`, 의존성 버전은 `pnpm-lock.yaml`을 기준으로 합니다.
 
 ```bash
+git clone https://github.com/evan506/smart-writer-public.git
+cd smart-writer-public
 corepack prepare pnpm@10.25.0 --activate
-pnpm install
+pnpm install --frozen-lockfile
 ```
 
-**A. 로컬 Supabase 사용** — DB를 먼저 띄우고, 출력된 값을 `.env.local`에 채웁니다:
+### A. 새 로컬 DB에서 시작하기 (권장)
 
 ```bash
 supabase start
 supabase db reset --local
-supabase status -o env      # URL / anon key 확인
-cp .env.example .env.local  # 위 값 + OPENROUTER_API_KEY 채우기
+supabase status -o env
+cp .env.example .env.local
+```
+
+`supabase status -o env`의 `API_URL` → `NEXT_PUBLIC_SUPABASE_URL`, `ANON_KEY` → `NEXT_PUBLIC_SUPABASE_ANON_KEY`를 `.env.local`에 복사합니다. 값이 채워진 뒤 실행하세요.
+
+```bash
 pnpm dev
 ```
 
-**B. 기존 Supabase 프로젝트 사용** — 프로젝트의 URL/anon key를 채우고 바로 실행:
+`http://localhost:3000/signup`에서 로컬 테스트 계정을 만든 뒤 작품 생성 → 회차 생성 → 집필을 시작합니다. 로컬 Auth는 이메일 확인을 요구하지 않습니다. 빈 DB에는 데모 계정이나 작품이 자동 생성되지 않습니다.
+
+공개본의 로컬 DB는 프로젝트 ID `smart-writer-public`, API **57431**, DB **57432**, Studio **57433**, 메일함 **57434**를 사용합니다. 기존에 같은 포트를 사용 중이면 `supabase/config.toml`에서 바꿉니다. 로컬 API는 HTTP로 실행하므로 자체 서명 인증서 우회 설정은 필요하지 않습니다. `db reset --local`은 이 로컬 DB의 데이터를 초기화하므로 새 설치 또는 테스트 DB에만 실행하세요.
+
+### AI 없이 확인할 수 있는 범위 / 실제 AI 실행
+
+- OpenRouter 키 없이도 가입·로그인, 작품/회차 생성, 초안 자동저장, 직접 등록한 작품 기억과 합성 샘플 후보 검토를 확인할 수 있습니다.
+- **실제 AI 추출·임베딩·Q&A**에는 본인의 유효한 `OPENROUTER_API_KEY`와 사용 가능한 API 크레딧이 필요합니다. ChatGPT 구독과 OpenRouter API 크레딧은 별개입니다. 키 없이 AI 실행을 눌러도 AI 결과가 생성되는 것은 아닙니다.
+- 기본 모델은 `src/lib/services/llm-models.ts`, 선택적 변경 변수는 `.env.example`을 확인하세요. 테스트에서 사용하는 가짜 키·모의 응답은 실제 AI 품질을 검증하지 않습니다.
+
+### 선택: 합성 샘플로 바로 체험하기
+
+로컬 DB와 `.env.local` 준비 후 실행합니다. 외부 AI를 호출하지 않고 테스트 계정·작품·후보를 만듭니다.
 
 ```bash
-cp .env.example .env.local  # NEXT_PUBLIC_SUPABASE_* + OPENROUTER_API_KEY 채우기
-pnpm dev
+pnpm seed:e2e
 ```
 
-`http://localhost:3000`을 엽니다.
-
-필수 환경변수: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `OPENROUTER_API_KEY`.
-선택: `SUPABASE_SERVICE_ROLE_KEY`(관리/정리 플로우), `DEMO_LOGIN_EMAIL` / `DEMO_LOGIN_PASSWORD`(`/demo` 원클릭 로그인 활성화 — **미설정 시 fail closed**).
-
-### 샘플 데이터 (본인 원고를 넣으세요)
-
-커밋된 테스트 픽스처는 **오리지널 허구 샘플 코퍼스**를 사용합니다. 그래서 이 저장소를 클론한 누구나 테스트를 바로 돌릴 수 있습니다.
-
-실제 원고를 다루는 평가 스크립트는 `references/test-data/`에서 읽으며, 이 경로는 **의도적으로 `.gitignore` 처리**되어 있습니다. 본인 원고를 여기에 넣으면 실제 산문에 대해 추출 품질 하네스를 돌릴 수 있고, 원고 데이터는 기본 Git 작업에서 추적·커밋 대상에 포함되지 않습니다.
+명령이 출력한 이메일·비밀번호로 로그인하세요. 샘플은 짧은 공개 합성 문장을 여러 회차에 반복 배치한 테스트 데이터이며 실제 장편 원고가 아닙니다. `/demo` 원클릭 진입을 로컬에서도 사용하려면 출력된 계정을 `.env.local`의 `DEMO_LOGIN_EMAIL`·`DEMO_LOGIN_PASSWORD`에 설정하고 개발 서버를 재시작합니다. 미설정 시 `/demo`는 안내와 함께 로그인 화면으로 돌아갑니다.
 
 ```bash
-pnpm seed:e2e          # 반복 가능한 데모 데이터 시드
-pnpm cleanup:e2e       # dry run
-pnpm cleanup:e2e:apply # 실제 삭제
+pnpm cleanup:e2e        # 삭제 대상만 확인
+pnpm cleanup:e2e:apply  # 테스트 계정의 E2E 작품 삭제
+supabase stop           # 이 폴더의 로컬 DB 정지, 데이터 보존
 ```
+
+### B. 이미 준비된 별도 개발용 Supabase 사용
+
+이 프로젝트의 마이그레이션과 Auth 설정이 적용된 개발용 DB에 한해 `.env.local`의 URL·anon key를 해당 DB 값으로 바꾸고 `pnpm dev`를 실행합니다. **빈 원격 DB에 환경값만 넣어서는 작동하지 않습니다.** 새 설치를 검토하는 경우 A 경로를 사용하세요. 이 안내는 원격 DB의 초기화나 운영 배포를 수행하지 않습니다.
+
+### 테스트 실행
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm typecheck:scripts
+pnpm test:run
+pnpm build
+pnpm exec playwright install chromium
+pnpm test:e2e
+```
+
+`pnpm test:e2e` 기본 실행에는 DB·인증 조건부 검사 건너뛰기가 있습니다. 전체 DB·인증 검사는 이 저장소의 별도 로컬 Supabase에서 다음 명령으로 실행합니다(테스트 DB 초기화 포함).
+
+```bash
+bash scripts/ci/run-db-backed-integration.sh
+```
+
+평가 스크립트에 본인의 원고를 입력할 경우 `references/test-data/`를 사용합니다. 이 경로와 생성된 평가 보고서는 Git 추적에서 제외됩니다. 비공개 원고는 기본 설치·공개 테스트에 필요하지 않습니다.
 
 ## 프로젝트 구조
 

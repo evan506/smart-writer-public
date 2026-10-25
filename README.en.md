@@ -90,7 +90,7 @@ Start from four blocks (시작 / 전개 / 전환 / 결말) and drill into child 
 | UI | Tailwind v4, shadcn/ui + Radix, CVA, custom design tokens |
 | Visualization | d3-force (custom interactive graph renderer) |
 | Validation | Zod |
-| LLM | Claude models + OpenAI-compatible embeddings (`text-embedding-3-small`) via OpenRouter. Default models are set in `.env.example` |
+| LLM | Claude models + OpenAI-compatible embeddings (`text-embedding-3-small`) via OpenRouter. Defaults are in `src/lib/services/llm-models.ts`; optional overrides are listed in `.env.example` |
 | Tests | Vitest, Testing Library, Playwright |
 | Tooling | pnpm 10.25.0, ESLint, knip (dead-code gate) |
 
@@ -153,48 +153,44 @@ Deliberately *not* built. Scope discipline is a feature:
 - One-click login at `/demo` — no sign-up, no personal API key
 - Walks the write → review → story-memory flow over a seeded 3-chapter world
 
-## Local development
+## Local installation and run
 
-Prerequisites: Node.js + Corepack, Supabase (an existing project or Supabase CLI + Docker for local), and an `OPENROUTER_API_KEY`.
+Use Node.js **22.12+**, pnpm **10.25.0**, Supabase CLI **2.65.5**, and a running Docker engine.
 
 ```bash
+git clone https://github.com/evan506/smart-writer-public.git
+cd smart-writer-public
 corepack prepare pnpm@10.25.0 --activate
-pnpm install
-```
-
-**A. Local Supabase** — bring the DB up first, then fill `.env.local` from its output:
-
-```bash
+pnpm install --frozen-lockfile
 supabase start
 supabase db reset --local
-supabase status -o env       # read the URL / anon key
-cp .env.example .env.local   # fill those + OPENROUTER_API_KEY
-pnpm dev
+supabase status -o env
+cp .env.example .env.local
 ```
 
-**B. Existing Supabase project** — fill your project's URL/anon key and run:
+Copy the reported `API_URL` into `NEXT_PUBLIC_SUPABASE_URL` and `ANON_KEY` into `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env.local`, then run `pnpm dev`. Open `http://localhost:3000/signup`, register a local account, create a project and chapter, and write. The local Auth configuration does not require email confirmation.
+
+The public snapshot uses its own project ID `smart-writer-public`, API port **57431**, DB **57432**, Studio **57433**, and mail **57434**. Change the config if those ports are occupied. Local API TLS is disabled, so no certificate-validation bypass is required. `db reset --local` resets this local DB; use a fresh or disposable test instance.
+
+Registration, draft autosave, manually entered story memory and seeded candidate review work without a provider key. Real extraction, embeddings and Q&A require your own valid `OPENROUTER_API_KEY` and API credits, separate from a ChatGPT subscription. Mocked tests do not demonstrate actual model quality. See `src/lib/services/llm-models.ts` and `.env.example` for model configuration.
+
+Optional synthetic sample data, with no paid AI requests:
 
 ```bash
-cp .env.example .env.local   # fill NEXT_PUBLIC_SUPABASE_* + OPENROUTER_API_KEY
-pnpm dev
+pnpm seed:e2e
 ```
 
-Open `http://localhost:3000`.
-
-Required env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `OPENROUTER_API_KEY`.
-Optional: `SUPABASE_SERVICE_ROLE_KEY` (admin/cleanup flows), `DEMO_LOGIN_EMAIL` / `DEMO_LOGIN_PASSWORD` (enables the `/demo` one-click login; **fails closed when unset**).
-
-### Sample data (bring your own manuscript)
-
-The committed test fixtures use a small **original, fictional sample corpus** — so the test suite runs out of the box for anyone who clones this repo.
-
-Evaluation scripts that operate on real manuscripts read from `references/test-data/`, which is `.gitignore`d by design. Drop your own chapters there to run the extraction-quality harness against real prose; manuscript data placed there is not tracked or committed by ordinary Git operations.
+Log in with the account printed by that command. Short synthetic samples are repeated across test chapters; these are not full-length manuscripts. For local `/demo` one-click login, put that account into `DEMO_LOGIN_EMAIL` and `DEMO_LOGIN_PASSWORD`, then restart the dev server. Without them, `/demo` returns to login with an explanation. Empty databases are not automatically seeded.
 
 ```bash
-pnpm seed:e2e          # seed repeatable demo data
-pnpm cleanup:e2e       # dry run
-pnpm cleanup:e2e:apply # actually delete
+pnpm cleanup:e2e        # dry run
+pnpm cleanup:e2e:apply # remove this test account's E2E projects
+supabase stop          # stop this local stack, preserve its data
 ```
+
+For an existing hosted **development** DB, migrations and Auth settings must already match this project; URL/key settings alone do not initialize an empty remote DB. The fresh local path above is the reviewed setup route.
+
+For browser tests, first run `pnpm exec playwright install chromium`. Default E2E skips DB/auth-gated cases. `bash scripts/ci/run-db-backed-integration.sh` resets this repository's local test DB and runs the DB/authenticated checks. Private manuscript input under git-ignored `references/test-data/` is optional and not needed for installation or public tests.
 
 ## Project structure
 
