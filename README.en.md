@@ -16,7 +16,7 @@ The live demo at [`/demo`](https://smart-writer-vq8j.vercel.app/demo) walks the 
 Updated on **2026-10-25**, based on the **2026-10-24 local working tree**. This is a curated evaluation snapshot, not an automatically synchronized mirror or a complete development history.
 
 - **My role:** define requirements and priorities from the PRD, guide product direction, and specify manuscript-preservation and regression constraints. I personally checked Korean input in the local PC writing screen.
-- **AI use:** ChatGPT and Codex, currently on a US$100/month paid plan. Coding, technical diagnosis, and automated test execution were delegated to AI coding agents.
+- **AI use:** ChatGPT and Codex. Coding, technical diagnosis, and automated test execution were delegated to AI coding agents.
 - **Recent code:** manuscript-save/budget safeguards, retrieval and Q&A evidence handling, PC input/display improvements, and restoring the writing position after reference lookup.
 - **Limits:** recent local PC and responsive changes are not all deployed to the hosted demo. Real-device IME/mobile workflows and actual model-answer quality require separate validation.
 - **Public data:** retained synthetic fixtures; private manuscripts, manuscript-derived evaluation data, internal documents and private diagnostic scenarios are excluded.
